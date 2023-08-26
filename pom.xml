@@ -21,7 +21,7 @@
         <dependency>
             <groupId>com.rpl</groupId>
             <artifactId>rama</artifactId>
-            <version>0.9.0</version>
+            <version>0.9.1</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -46,6 +46,13 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <repositories>
+      <repository>
+        <id>nexus-releases</id>
+        <url>https://nexus.redplanetlabs.com/repository/maven-public-releases</url>
+      </repository>
+    </repositories>
 
     <build>
         <finalName>${custom.final.name}</finalName>
