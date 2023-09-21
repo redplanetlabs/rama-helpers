@@ -2,7 +2,7 @@ package com.rpl.rama.helpers;
 
 import com.rpl.rama.*;
 import com.rpl.rama.module.*;
-import com.rpl.rama.ops.Ops;
+import com.rpl.rama.ops.*;
 
 /**
  * Higher-level PState helper for generating 4 or 8 byte IDs unique on a given task. IDs will not be unique across tasks.
@@ -62,7 +62,7 @@ public class TaskUniqueIdPState {
       if(_descending) {
         init = Integer.MAX_VALUE;
       } else {
-        init = 0L;
+        init = 0;
       }
     }
     topology.pstate(_pstateName, schema).initialValue(init).makePrivate();
@@ -76,7 +76,10 @@ public class TaskUniqueIdPState {
    */
   public Block genId(String outVar) {
     int change = _descending ? -1 : 1;
+    RamaFunction2 op;
+    if(_long) op = Ops.PLUS_LONG;
+    else op = Ops.PLUS;
     return Block.each(Ops.EXTRACT_VALUE, _pstateName).out(outVar)
-                .localTransform(_pstateName, Path.term(Ops.PLUS_LONG, change));
+                .localTransform(_pstateName, Path.term(op, change));
   }
 }
