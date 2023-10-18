@@ -28,6 +28,8 @@ public class KeyToUniqueFixedItemsPStateGroup {
   private final int _maxAmt;
   private final Class _keyClass;
   private final Class _itemClass;
+  private RamaFunction1 _entityIdFunction;
+  private Class _entityIdType;
   private int _clearBatchSize;
 
   /**
@@ -58,6 +60,13 @@ public class KeyToUniqueFixedItemsPStateGroup {
     return this;
   }
 
+
+  public KeyToUniqueFixedItemsPStateGroup entityIdFunction(Class entityIdType, RamaFunction1 fn) {
+    _entityIdFunction = fn;
+    _entityIdType = entityIdType;
+    return this;
+  }
+
   /**
    * Declares needed PStates for this KeyToUniqueFixedItemsPStateGroup on the specified topology
    */
@@ -72,7 +81,7 @@ public class KeyToUniqueFixedItemsPStateGroup {
       _pstateReverse,
       PState.mapSchema(
         _keyClass,
-        PState.mapSchema(_itemClass, Long.class).subindexed(SubindexOptions.withoutSizeTracking())
+        PState.mapSchema(_entityIdType == null ? _itemClass : _entityIdType, Long.class).subindexed(SubindexOptions.withoutSizeTracking())
       ));
     topology.pstate(
       _meta,
@@ -94,7 +103,6 @@ public class KeyToUniqueFixedItemsPStateGroup {
    * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block addItem(Object key, Object item) {
-    String existingIdVar = Helpers.genVar("existingId");
     String metaVar = Helpers.genVar("meta");
     String idVar = Helpers.genVar("id");
     String maxAmtVar = Helpers.genVar("maxAmt");
@@ -104,10 +112,9 @@ public class KeyToUniqueFixedItemsPStateGroup {
     String dropIdAndItemExtraVar = Helpers.genVar("dropIdAndItemExtra");
     String dropIdExtraVar = Helpers.genVar("dropIdExtra");
     String dropItemExtraVar = Helpers.genVar("dropItemExtra");
-    return Block.localSelect(_pstateReverse, Path.key(key, item)).out(existingIdVar)
-                .ifTrue(new Expr(Ops.IS_NOT_NULL, existingIdVar),
-                   Block.localTransform(_pstate, Path.key(key, existingIdVar).termVoid())
-                        .localTransform(_pstateReverse, Path.key(key, item).termVoid()))
+    String entityIdVar = Helpers.genVar("entityId");
+    String dropEntityIdVar = Helpers.genVar("dropEntityId");
+    return Block.macro(removeItem(key, item))
                 .localSelect(_meta, Path.key(key)).out(metaVar)
                 .ifTrue(new Expr(Ops.IS_NULL, metaVar),
                    Block.each(Ops.IDENTITY, Long.MAX_VALUE).out(idVar)
@@ -116,21 +123,27 @@ public class KeyToUniqueFixedItemsPStateGroup {
                         .each(Ops.GET, metaVar, 1).out(maxAmtVar))
                 .each(KeyToUniqueFixedItemsPStateGroup::computeDropId, idVar, _maxAmt).out(dropIdVar)
                 .localSelect(_pstate, Path.key(key, dropIdVar)).out(dropItemVar)
+                .macro(extractEntityId(dropItemVar, dropEntityIdVar))
                 .each(Ops.TUPLE, new Expr(Ops.DEC_LONG, idVar), _maxAmt).out(newMetaVar)
                 .localTransform(_meta, Path.key(key).termVal(newMetaVar))
+                .macro(extractEntityId(item, entityIdVar))
                 .localTransform(_pstate,
                                 Path.key(key)
                                     .multiPath(Path.key(idVar).termVal(item),
                                                Path.key(dropIdVar).termVoid()))
                 .localTransform(_pstateReverse,
                                 Path.key(key)
-                                    .multiPath(Path.key(item).termVal(idVar),
-                                               Path.key(dropItemVar).termVoid()))
+                                    .multiPath(Path.key(entityIdVar).termVal(idVar),
+                                               Path.key(dropEntityIdVar).termVoid()))
                 .ifTrue(new Expr(Ops.NOT_EQUAL, maxAmtVar, _maxAmt),
                    Block.localSelect(_pstate, Path.key(key).sortedMapRangeFrom(dropIdVar).all()).out(dropIdAndItemExtraVar)
                         .each(Ops.EXPAND, dropIdAndItemExtraVar).out(dropIdExtraVar, dropItemExtraVar)
                         .localTransform(_pstate, Path.key(key, dropIdExtraVar).termVoid())
                         .localTransform(_pstateReverse, Path.key(key, dropItemExtraVar).termVoid()));
+  }
+
+  private Block extractEntityId(Object item, String entityIdVar) {
+    return Block.each(_entityIdFunction == null ? Ops.IDENTITY : _entityIdFunction, item).out(entityIdVar);
   }
 
   /**
@@ -139,13 +152,30 @@ public class KeyToUniqueFixedItemsPStateGroup {
    * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block removeItem(Object key, Object item) {
-    String existingIdVar = Helpers.genVar("existingId");
-    return Block.localSelect(_pstateReverse, Path.key(key, item)).out(existingIdVar)
-                .ifTrue(new Expr(Ops.IS_NOT_NULL, existingIdVar),
-                  Block.localTransform(_pstate, Path.key(key, existingIdVar).termVoid())
-                       .localTransform(_pstateReverse, Path.key(key, item).termVoid()));
+    String entityIdVar = Helpers.genVar("entityId");
+    return Block.macro(extractEntityId(item, entityIdVar))
+                .macro(removeItemByEntityId(key, entityIdVar));
   }
 
+
+  /**
+   * Macro to remove entity from inner fixed list by its entity ID
+   *
+   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   */
+  public Block removeItemByEntityId(Object key, Object entityId) {
+    String existingIdVar = Helpers.genVar("existingId");
+    return Block.localSelect(_pstateReverse, Path.key(key, entityId)).out(existingIdVar)
+                .ifTrue(new Expr(Ops.IS_NOT_NULL, existingIdVar),
+                  Block.localTransform(_pstate, Path.key(key, existingIdVar).termVoid())
+                       .localTransform(_pstateReverse, Path.key(key, entityId).termVoid()));
+  }
+
+  /**
+   * Macro to remove entity from inner fixed list by its ID
+   *
+   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   */
   public Block removeItemById(Object key, Object id) {
     String existingItemVar = Helpers.genVar("existingItem");
     return Block.localSelect(_pstate, Path.key(key, id)).out(existingItemVar)
@@ -161,7 +191,8 @@ public class KeyToUniqueFixedItemsPStateGroup {
    */
   public Block removeKey(Object key) {
     return Block.localTransform(_meta, Path.key(key).termVoid())
-                .localTransform(_pstate, Path.key(key).termVoid());
+                .localTransform(_pstate, Path.key(key).termVoid())
+                .localTransform(_pstateReverse, Path.key(key).termVoid());
   }
 
   public Block clearItems(Object key) {
