@@ -12,8 +12,16 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 import java.util.Arrays;
+import java.util.List;
 
 public class KeyToUniqueFixedItemsPStateGroupTest {
+  public static class StrictFirst implements RamaFunction1<List, Object> {
+    @Override
+    public Object invoke(List l) {
+      return l.get(0);
+    }
+  }
+
 
   public static class Module implements RamaModule {
     public RamaFunction1 entityIdFn = null;
@@ -87,6 +95,7 @@ public class KeyToUniqueFixedItemsPStateGroupTest {
         depot.append(new Actions.AddItem("a", i));
       }
       assertEquals(10, (int) p.selectOne(Path.key("a").view(Ops.SIZE)));
+      assertEquals(10, (int) pR.selectOne(Path.key("a").view(Ops.SIZE)));
 
       // Removing everything
       for (int i = 0; i < 10; i++) {
@@ -105,7 +114,7 @@ public class KeyToUniqueFixedItemsPStateGroupTest {
   public void entityIdFnTest() throws Exception {
     try(InProcessCluster cluster = InProcessCluster.create()) {
       Module m = new Module();
-      m.entityIdFn = Ops.FIRST;
+      m.entityIdFn = new StrictFirst();
       cluster.launchModule(m, new LaunchConfig(1, 1));
 
       Depot depot = cluster.clusterDepot(Module.class.getName(), "*commandDepot");
@@ -145,6 +154,13 @@ public class KeyToUniqueFixedItemsPStateGroupTest {
       assertEquals(1, (int) p.selectOne(Path.key("a").view(Ops.SIZE)));
       assertEquals(1, (int) pR.selectOne(Path.key("a").view(Ops.SIZE)));
       assertNull(pR.selectOne(Path.key("a", "z")));
+
+      // Test capacity constraint
+      for (int i = 0; i < 20; i++) {
+        depot.append(new Actions.AddItem("a", Arrays.asList("" + i, 0)));
+      }
+      assertEquals(10, (int) p.selectOne(Path.key("a").view(Ops.SIZE)));
+      assertEquals(10, (int) pR.selectOne(Path.key("a").view(Ops.SIZE)));
     }
   }
 }

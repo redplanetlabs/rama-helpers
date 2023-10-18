@@ -4,6 +4,7 @@ import com.rpl.rama.*;
 import com.rpl.rama.module.ETLTopologyBase;
 import com.rpl.rama.ops.*;
 
+import java.util.Map;
 import java.util.SortedMap;
 
 /**
@@ -97,6 +98,14 @@ public class KeyToUniqueFixedItemsPStateGroup {
     }
   }
 
+  private static final Object SENTINEL = new Object();
+
+  private static Boolean isNotSentinel(Object o) {
+    return o != SENTINEL;
+  }
+
+
+
   /**
    * Macro to add item to collection for specified key
    *
@@ -114,6 +123,7 @@ public class KeyToUniqueFixedItemsPStateGroup {
     String dropItemExtraVar = Helpers.genVar("dropItemExtra");
     String entityIdVar = Helpers.genVar("entityId");
     String dropEntityIdVar = Helpers.genVar("dropEntityId");
+    String dropExistsVar = Helpers.genVar("dropExists");
     return Block.macro(removeItem(key, item))
                 .localSelect(_meta, Path.key(key)).out(metaVar)
                 .ifTrue(new Expr(Ops.IS_NULL, metaVar),
@@ -122,8 +132,13 @@ public class KeyToUniqueFixedItemsPStateGroup {
                    Block.each(Ops.GET, metaVar, 0).out(idVar)
                         .each(Ops.GET, metaVar, 1).out(maxAmtVar))
                 .each(KeyToUniqueFixedItemsPStateGroup::computeDropId, idVar, _maxAmt).out(dropIdVar)
-                .localSelect(_pstate, Path.key(key, dropIdVar)).out(dropItemVar)
-                .macro(extractEntityId(dropItemVar, dropEntityIdVar))
+                .localSelect(_pstate, Path.key(key)
+                                          .view((Map m, Object dropId) -> m==null ? SENTINEL : m.getOrDefault(dropId, SENTINEL),
+                                                dropIdVar)).out(dropItemVar)
+                .each(KeyToUniqueFixedItemsPStateGroup::isNotSentinel, dropItemVar).out(dropExistsVar)
+                .ifTrue(dropExistsVar,
+                  Block.macro(extractEntityId(dropItemVar, dropEntityIdVar)),
+                  Block.each(Ops.IDENTITY, null).out(dropEntityIdVar))
                 .each(Ops.TUPLE, new Expr(Ops.DEC_LONG, idVar), _maxAmt).out(newMetaVar)
                 .localTransform(_meta, Path.key(key).termVal(newMetaVar))
                 .macro(extractEntityId(item, entityIdVar))
@@ -134,7 +149,10 @@ public class KeyToUniqueFixedItemsPStateGroup {
                 .localTransform(_pstateReverse,
                                 Path.key(key)
                                     .multiPath(Path.key(entityIdVar).termVal(idVar),
-                                               Path.key(dropEntityIdVar).termVoid()))
+                                               Path.putCollected(dropExistsVar)
+                                                   .isCollected(Ops.IDENTITY)
+                                                   .dispenseCollected()
+                                                   .key(dropEntityIdVar).termVoid()))
                 .ifTrue(new Expr(Ops.NOT_EQUAL, maxAmtVar, _maxAmt),
                    Block.localSelect(_pstate, Path.key(key).sortedMapRangeFrom(dropIdVar).all()).out(dropIdAndItemExtraVar)
                         .each(Ops.EXPAND, dropIdAndItemExtraVar).out(dropIdExtraVar, dropItemExtraVar)
