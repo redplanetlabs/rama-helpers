@@ -171,6 +171,11 @@ public class KeyToUniqueFixedItemsPStateGroup {
                        .localTransform(_pstateReverse, Path.key(key, entityId).termVoid()));
   }
 
+  /**
+   * Macro to remove entity from inner fixed list by its ID
+   *
+   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   */
   public Block removeItemById(Object key, Object id) {
     String existingItemVar = Helpers.genVar("existingItem");
     return Block.localSelect(_pstate, Path.key(key, id)).out(existingItemVar)

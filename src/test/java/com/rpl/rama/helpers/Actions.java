@@ -19,6 +19,11 @@ public class Actions {
     public Object id;
     public RemoveItemById(Object key, Object id) { this.key = key; this.id = id; }
   }
+  public static class RemoveItemByEntityId implements RamaSerializable {
+    public Object key;
+    public Object id;
+    public RemoveItemByEntityId(Object key, Object id) { this.key = key; this.id = id; }
+  }
   public static class RemoveKey implements RamaSerializable {
     public Object key;
     public RemoveKey(Object key) { this.key = key; }
