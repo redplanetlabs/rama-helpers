@@ -159,10 +159,9 @@ public class KeyToUniqueFixedItemsPStateGroup {
 
 
   /**
-   * TODO
-   * @param key
-   * @param entityId
-   * @return
+   * Macro to remove entity from inner fixed list by its entity ID
+   *
+   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block removeItemByEntityId(Object key, Object entityId) {
     String existingIdVar = Helpers.genVar("existingId");
@@ -188,7 +187,6 @@ public class KeyToUniqueFixedItemsPStateGroup {
   public Block removeKey(Object key) {
     return Block.localTransform(_meta, Path.key(key).termVoid())
                 .localTransform(_pstate, Path.key(key).termVoid())
-                // TODO: add test for this
                 .localTransform(_pstateReverse, Path.key(key).termVoid());
   }
 

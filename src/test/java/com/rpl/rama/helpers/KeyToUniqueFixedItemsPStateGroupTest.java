@@ -85,9 +85,14 @@ public class KeyToUniqueFixedItemsPStateGroupTest {
       }
       depot.append(new Actions.RemoveKey("b"));
       assertNull(p.selectOne(Path.key("b")));
+      assertNull(pR.selectOne(Path.key("b")));
 
       depot.append(new Actions.ClearItems("a"));
       assertEquals(0, (int) p.selectOne(Path.key("a").view(Ops.SIZE)));
+
+      // TODO: <<<<>>>>
+      //   - verify removeKey removes from pstateReverse as well
+      //   - check usage of entityIdFunction
     }
   }
 }
