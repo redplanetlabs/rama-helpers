@@ -10,7 +10,7 @@ import java.util.SortedMap;
 /**
  * Higher-level PState implementation for a data structure from a key to a collection of items with a maximum cardinality.
  * Automatically drops oldest item on adding a new item when max cardinality is reached. Inner collection is a map
- * from id -> element, with ids being monotonically decreasing starting at Long.MAX_VALUE.
+ * from id to element, with ids being monotonically decreasing starting at Long.MAX_VALUE.
  * <br><br>
  * Declares three PStates underneath the hood. The provided PState name in the constructor should be used for all queries,
  * another one has "Reverse" appended to the name and can look up an internal ID for an entity, and the last one is
@@ -54,7 +54,7 @@ public class KeyToUniqueFixedItemsPStateGroup {
   }
 
   /**
-   * Configures how many items to clear at a time during execution of {@link #clearItems()}
+   * Configures how many items to clear at a time during execution of {@link #clearItems(Object)}
    */
   public KeyToUniqueFixedItemsPStateGroup clearBatchSize(int size) {
     _clearBatchSize = size;
