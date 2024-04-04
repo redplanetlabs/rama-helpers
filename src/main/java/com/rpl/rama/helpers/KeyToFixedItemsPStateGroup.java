@@ -9,7 +9,7 @@ import java.util.*;
 /**
  * Higher-level PState implementation for a data structure from a key to a collection of items with a maximum cardinality.
  * Automatically drops oldest item on adding a new item when max cardinality is reached. Inner collection is a map
- * from id to element, with ids being monotonically increasing decreasing starting at Long.MAX_VALUE.
+ * from id to element, with ids being monotonically decreasing starting at Long.MAX_VALUE.
  * <br><br>
  * Declares two PStates underneath the hood. The provided PState name in the constructor should be used for all queries,
  * while the second one is used for internal metadata as part of the implementation.
@@ -132,7 +132,7 @@ public class KeyToFixedItemsPStateGroup {
              	  .localSelect(_pstate,
              			  	   Path.key(key)
              			  	       .sortedMapRangeFrom(
-             			  	    	  "*i", 
+             			  	    	  "*i",
              			  	    	  SortedRangeFromOptions.excludeStart().maxAmt(_clearBatchSize))).out("*m")
              	  .atomicBlock(
              		 Block.each(Ops.EXPLODE_MAP, "*m").out("*i", "*v")
