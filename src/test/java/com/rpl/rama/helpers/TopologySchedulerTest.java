@@ -52,8 +52,10 @@ public class TopologySchedulerTest {
       }
 
       Collections.sort(appends);
-
-      assertEquals(appends, expirations.select(Path.mapKeys().first()));
+      List<String> timeStrs = expirations.select(Path.mapKeys().first());
+      List times = new ArrayList();
+      for(String s: timeStrs) times.add(Long.parseLong(s));
+      assertEquals(appends, times);
     }
   }
 
