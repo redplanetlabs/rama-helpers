@@ -41,6 +41,10 @@ public class TopologyScheduler {
     return this;
   }
 
+  private static String padTimeStr(Long timestampMillis) {
+    return String.format("%014d", timestampMillis);
+  }
+
   /**
    * Declares all needed PStates for this instance.
    */
@@ -73,7 +77,7 @@ public class TopologyScheduler {
     SortedRangeToOptions options = SortedRangeToOptions.includeEnd().maxAmt(_maxFetchAmt);
     Block.Impl start = Block.each(TopologyUtils::currentTimeMillis).out(currentTimeVar)
                             .allPartition()
-                            .each(Ops.TUPLE, currentTimeVar, MAX_UUID).out(targetVar)
+                            .each(Ops.TUPLE, new Expr(TopologyScheduler::padTimeStr, currentTimeVar), MAX_UUID).out(targetVar)
                             .localSelect(_pstateVar, Path.sortedMapRangeTo(targetVar, options)).out(mvar)
                             .each((Map m) -> m.entrySet().iterator(), mvar).out(itVar)
                             .loop(
@@ -116,7 +120,7 @@ public class TopologyScheduler {
     String longVar = Helpers.genVar("timestampLong");
     return Block.each(() -> UUID.randomUUID().toString()).out(uuidVar)
                 .each((Number n) -> n.longValue(), timestampMillis).out(longVar)
-                .each(Ops.TUPLE, longVar, uuidVar).out(tupleVar)
+                .each(Ops.TUPLE, new Expr(TopologyScheduler::padTimeStr, longVar), uuidVar).out(tupleVar)
                 .localTransform(_pstateVar, Path.key(tupleVar).termVal(item));
   }
 

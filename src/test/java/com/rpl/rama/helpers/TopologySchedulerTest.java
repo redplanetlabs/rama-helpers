@@ -188,6 +188,8 @@ public class TopologySchedulerTest {
       Depot depot = cluster.clusterDepot(StreamProcessingModule.class.getName(), "*depot");
       PState p = cluster.clusterPState(StreamProcessingModule.class.getName(), "$$p");
 
+      long largeTimeDelta = 10000000000L;
+
       depot.append(Arrays.asList("a", 11));
       depot.append(Arrays.asList("b", 11));
       depot.append(Arrays.asList("a", 9));
@@ -195,6 +197,7 @@ public class TopologySchedulerTest {
       depot.append(Arrays.asList("a", 10));
       depot.append(Arrays.asList("b", 10));
       depot.append(Arrays.asList("a", 10));
+      depot.append(Arrays.asList("a", largeTimeDelta));
 
       TopologyUtils.advanceSimTime(8);
       Thread.sleep(200);
@@ -213,6 +216,11 @@ public class TopologySchedulerTest {
       TopologyUtils.advanceSimTime(1);
       Thread.sleep(200);
       attainStableCondition(() -> equals(5L, p.selectOne(Path.key("a"))));
+      attainStableCondition(() -> equals(2L, p.selectOne(Path.key("b"))));
+
+      TopologyUtils.advanceSimTime(largeTimeDelta - 11);
+      Thread.sleep(200);
+      attainStableCondition(() -> equals(6L, p.selectOne(Path.key("a"))));
       attainStableCondition(() -> equals(2L, p.selectOne(Path.key("b"))));
     }
   }
