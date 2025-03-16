@@ -30,6 +30,6 @@ Here is the dependency declaration:
 <dependency>
     <groupId>com.rpl</groupId>
     <artifactId>rama-helpers</artifactId>
-    <version>0.9.0</version>
+    <version>0.10.0</version>
 </dependency>
 ```
