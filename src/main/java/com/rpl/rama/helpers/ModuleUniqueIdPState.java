@@ -11,7 +11,7 @@ import com.rpl.rama.ops.Ops;
  * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/pstates.html">PStates documentation</a>
  * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
  */
-public class ModuleUniqueIdPState {
+public class ModuleUniqueIdPState implements RamaSerializable {
   private final String _pstateName;
   private boolean _descending;
 

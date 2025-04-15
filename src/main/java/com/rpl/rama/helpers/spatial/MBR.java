@@ -69,6 +69,10 @@ public class MBR implements RamaSerializable {
     return dimensions;
   }
 
+  private boolean validDimension(int dimension) {
+    return (dimension >= 0 && dimension < dimensions);
+  }
+
   /**
    * Returns the minimum coordinate for the specified dimension.
    *
@@ -77,9 +81,7 @@ public class MBR implements RamaSerializable {
    * @throws IndexOutOfBoundsException If the dimension is invalid
    */
   public double getMin(int dimension) {
-    if (dimension < 0 || dimension >= dimensions) {
-      throw new IndexOutOfBoundsException("Invalid dimension: " + dimension);
-    }
+    assert validDimension(dimension) : "Invalid dimension";
     return mins[dimension];
   }
 
@@ -91,9 +93,7 @@ public class MBR implements RamaSerializable {
    * @throws IndexOutOfBoundsException If the dimension is invalid
    */
   public double getMax(int dimension) {
-    if (dimension < 0 || dimension >= dimensions) {
-      throw new IndexOutOfBoundsException("Invalid dimension: " + dimension);
-    }
+    assert validDimension(dimension) : "Invalid dimension";
     return maxs[dimension];
   }
 
@@ -158,6 +158,28 @@ public class MBR implements RamaSerializable {
     return false;
   }
 
+  /** Replace Double.POSITIVE_INFINITY with Double/MAX_VALUE, and
+   * NEGATIVE_INFINITY with the largest representable negative number. */
+  private static double approximateLimit(double v) {
+    if (v == Double.POSITIVE_INFINITY) {
+      return Double.MAX_VALUE;
+    } else if (v == Double.NEGATIVE_INFINITY) {
+      return -Double.MAX_VALUE;  // Largest representable negative number
+    } else {
+      return v;  // Return original value if not infinite
+    }
+  }
+
+  public MBR approximatedLimits() {
+    double[] newMins = mins.clone();
+    double[] newMaxs = maxs.clone();
+    for (int i = 0; i < dimensions; i++) {
+      newMins[i] = approximateLimit(mins[i]);
+      newMaxs[i] = approximateLimit(maxs[i]);
+    }
+    return new MBR(newMins, newMaxs);
+  }
+
   /**
    * Creates a new MBR that is the union of this MBR and the specified point.
    *
@@ -185,6 +207,10 @@ public class MBR implements RamaSerializable {
     return new MBR(newMins, newMaxs);
   }
 
+  private boolean hasSameDimensions(MBR other) {
+    return other.dimensions == dimensions;
+  }
+
   /**
    * Creates a new MBR that is the union of this MBR and another MBR.
    *
@@ -193,10 +219,7 @@ public class MBR implements RamaSerializable {
    * @throws IllegalArgumentException If the other MBR has a different number of dimensions
    */
   public MBR union(MBR other) {
-    if (other.dimensions != dimensions) {
-      throw new IllegalArgumentException("MBR dimensions don't match");
-    }
-
+    assert hasSameDimensions(other) : "MBR dimensions must match";
     if (isEmpty()) {
       return new MBR(other);
     }
@@ -225,10 +248,7 @@ public class MBR implements RamaSerializable {
    * @throws IllegalArgumentException If the other MBR has a different number of dimensions
    */
   public double calculateEnlargement(MBR other) {
-    if (other.dimensions != dimensions) {
-      throw new IllegalArgumentException("MBR dimensions don't match");
-    }
-
+    assert hasSameDimensions(other) : "MBR dimensions must match";
     if (isEmpty()) {
       return other.area();
     }
@@ -293,15 +313,30 @@ public class MBR implements RamaSerializable {
    * @throws IndexOutOfBoundsException If the dimension is invalid
    */
   public double getExtent(int dimension) {
-    if (dimension < 0 || dimension >= dimensions) {
-      throw new IndexOutOfBoundsException("Invalid dimension: " + dimension);
-    }
-
+    assert validDimension(dimension) : "Invalid dimension";
     if (isEmpty()) {
       return 0;
     }
 
     return maxs[dimension] - mins[dimension];
+  }
+
+  /**
+   * Returns the extent (width, height, etc.) of this MBR in the specified dimension.
+   * Infinite ranges are approximated, respecting the sixe of the inifinite range.
+   *
+   * @param dimension The dimension index (0-based)
+   * @return The extent in the specified dimension
+   * @throws IndexOutOfBoundsException If the dimension is invalid
+   */
+  public double getApproximateExtent(int dimension) {
+    assert validDimension(dimension) : "Invalid dimension";
+    if (isEmpty()) {
+      return 0;
+    }
+
+    return approximateLimit(maxs[dimension])
+      - approximateLimit(mins[dimension]);
   }
 
   /**
@@ -312,10 +347,7 @@ public class MBR implements RamaSerializable {
    * @throws IllegalArgumentException If the other MBR has a different number of dimensions
    */
   public boolean overlaps(MBR other) {
-    if (other.dimensions != dimensions) {
-      throw new IllegalArgumentException("MBR dimensions don't match");
-    }
-
+    assert hasSameDimensions(other) : "MBR dimensions must match";
     if (isEmpty() || other.isEmpty()) {
       return false;
     }
@@ -337,10 +369,7 @@ public class MBR implements RamaSerializable {
    * @throws IllegalArgumentException If the other MBR has a different number of dimensions
    */
   public double overlapAmount(MBR other) {
-    if (other.dimensions != dimensions) {
-      throw new IllegalArgumentException("MBR dimensions don't match");
-    }
-
+    assert hasSameDimensions(other) : "MBR dimensions must match";
     if (isEmpty() || other.isEmpty() || !overlaps(other)) {
       return 0;
     }
@@ -375,10 +404,7 @@ public class MBR implements RamaSerializable {
    * @throws IllegalArgumentException If the other MBR has a different number of dimensions
    */
   public MBR intersection(MBR other) {
-    if (other.dimensions != dimensions) {
-      throw new IllegalArgumentException("MBR dimensions don't match");
-    }
-
+    assert hasSameDimensions(other) : "MBR dimensions must match";
     if (isEmpty() || other.isEmpty() || !overlaps(other)) {
       return new MBR(dimensions); // Empty MBR
     }
@@ -392,6 +418,28 @@ public class MBR implements RamaSerializable {
     }
 
     return new MBR(newMins, newMaxs);
+  }
+
+  /**
+   * Predicate for the intersection of this MBR and another MBR.
+   *
+   * @param other The other MBR
+   * @return True if they intersect, false otherwise
+   * @throws IllegalArgumentException If the other MBR has a different number of dimensions
+   */
+  public boolean isIntersects(MBR other) {
+    assert hasSameDimensions(other) : "MBR dimensions must match";
+    if (isEmpty() || other.isEmpty() || !overlaps(other)) {
+      return false;
+    }
+
+    for (int i = 0; i < dimensions; i++) {
+      if (maxs[i] < other.mins[i] || mins[i] > other.maxs[i]) {
+	return false;
+      }
+    }
+
+    return true;
   }
 
   /**
@@ -427,10 +475,7 @@ public class MBR implements RamaSerializable {
    * @throws IllegalArgumentException If the other MBR has a different number of dimensions
    */
   public boolean contains(MBR other) {
-    if (other.dimensions != dimensions) {
-      throw new IllegalArgumentException("MBR dimensions don't match");
-    }
-
+    assert hasSameDimensions(other) : "MBR dimensions must match";
     if (isEmpty() || other.isEmpty()) {
       return false;
     }
@@ -442,6 +487,22 @@ public class MBR implements RamaSerializable {
     }
 
     return true;
+  }
+
+  public boolean isLower(MBR other, int dimension) {
+    assert hasSameDimensions(other) : "MBR dimensions must match";
+    double otherMin = other.mins[dimension];
+    double thisMin = mins[dimension];
+    return (otherMin > thisMin
+	    || (Double.isInfinite(thisMin) && !(Double.isInfinite(otherMin))));
+  }
+
+  public boolean isHigher(MBR other, int dimension) {
+    assert hasSameDimensions(other) : "MBR dimensions must match";
+    double otherMax = other.maxs[dimension];
+    double thisMax = maxs[dimension];
+    return (otherMax < thisMax
+	    || (Double.isInfinite(thisMax) && !(Double.isInfinite(otherMax))));
   }
 
   /**
@@ -488,10 +549,7 @@ public class MBR implements RamaSerializable {
    * @throws IllegalArgumentException If the other MBR has a different number of dimensions
    */
   public double minDistance(MBR other) {
-    if (other.dimensions != dimensions) {
-      throw new IllegalArgumentException("MBR dimensions don't match");
-    }
-
+    assert hasSameDimensions(other) : "MBR dimensions must match";
     if (isEmpty() || other.isEmpty()) {
       return Double.POSITIVE_INFINITY;
     }
