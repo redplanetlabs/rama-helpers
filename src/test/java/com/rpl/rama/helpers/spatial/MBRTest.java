@@ -15,7 +15,7 @@ public class MBRTest {
   public void testConstructorsAndGetters() {
     // Test empty constructor
     MBR emptyMBR = new MBR(3);
-    assertEquals(3, emptyMBR.getDimensions());
+    assertEquals(3, emptyMBR.dimensions());
     assertTrue(emptyMBR.isEmpty());
 
     // Test array constructor
@@ -23,7 +23,7 @@ public class MBRTest {
     double[] maxs = {4.0, 5.0, 6.0};
     MBR mbr = new MBR(mins, maxs);
 
-    assertEquals(3, mbr.getDimensions());
+    assertEquals(3, mbr.dimensions());
     assertArrayEquals(mins, mbr.getMins(), 0.0);
     assertArrayEquals(maxs, mbr.getMaxs(), 0.0);
 
@@ -32,7 +32,7 @@ public class MBRTest {
 
     // Test copy constructor
     MBR copy = new MBR(mbr);
-    assertEquals(mbr.getDimensions(), copy.getDimensions());
+    assertEquals(mbr.dimensions(), copy.dimensions());
     assertArrayEquals(mbr.getMins(), copy.getMins(), 0.0);
     assertArrayEquals(mbr.getMaxs(), copy.getMaxs(), 0.0);
 

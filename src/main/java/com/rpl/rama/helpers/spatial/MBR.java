@@ -1,5 +1,7 @@
 package com.rpl.rama.helpers.spatial;
 
+import java.util.Arrays;
+
 import com.rpl.rama.RamaSerializable;
 
 /**
@@ -9,11 +11,13 @@ import com.rpl.rama.RamaSerializable;
  * using Double.NEGATIVE_INFINITY and Double.POSITIVE_INFINITY. The implementation follows
  * the design decisions documented in MBR-representation.md and MBR-open-range.md.
  */
+// TODO make serialization more efficient readObject, writeObject
 public class MBR implements RamaSerializable {
+
   private final double[] mins;
   private final double[] maxs;
-  private final int dimensions;
 
+  // TODO check if this is used
   /**
    * Creates an empty MBR with the specified number of dimensions.
    * An empty MBR has mins set to POSITIVE_INFINITY and maxs set to NEGATIVE_INFINITY.
@@ -21,7 +25,6 @@ public class MBR implements RamaSerializable {
    * @param dimensions The number of dimensions for this MBR
    */
   public MBR(int dimensions) {
-    this.dimensions = dimensions;
     this.mins = new double[dimensions];
     this.maxs = new double[dimensions];
 
@@ -43,8 +46,6 @@ public class MBR implements RamaSerializable {
     if (mins.length != maxs.length) {
       throw new IllegalArgumentException("Min and max arrays must have the same length");
     }
-
-    this.dimensions = mins.length;
     this.mins = mins.clone();
     this.maxs = maxs.clone();
   }
@@ -55,7 +56,6 @@ public class MBR implements RamaSerializable {
    * @param other The MBR to copy
    */
   public MBR(MBR other) {
-    this.dimensions = other.dimensions;
     this.mins = other.mins.clone();
     this.maxs = other.maxs.clone();
   }
@@ -65,12 +65,12 @@ public class MBR implements RamaSerializable {
    *
    * @return The number of dimensions
    */
-  public int getDimensions() {
-    return dimensions;
+  public int dimensions() {
+    return mins.length;
   }
 
   private boolean validDimension(int dimension) {
-    return (dimension >= 0 && dimension < dimensions);
+    return (dimension >= 0 && dimension < dimensions());
   }
 
   /**
@@ -122,7 +122,7 @@ public class MBR implements RamaSerializable {
    * @return true if this MBR is empty, false otherwise
    */
   public boolean isEmpty() {
-    for (int i = 0; i < dimensions; i++) {
+    for (int i = 0; i < mins.length; i++) {
       if (mins[i] > maxs[i]) {
         return true;
       }
@@ -136,8 +136,9 @@ public class MBR implements RamaSerializable {
    * @return true if this MBR is infinite in all dimensions, false otherwise
    */
   public boolean isInfinite() {
-    for (int i = 0; i < dimensions; i++) {
-      if (mins[i] != Double.NEGATIVE_INFINITY || maxs[i] != Double.POSITIVE_INFINITY) {
+    for (int i = 0; i < mins.length; i++) {
+      if (mins[i] != Double.NEGATIVE_INFINITY ||
+	  maxs[i] != Double.POSITIVE_INFINITY) {
         return false;
       }
     }
@@ -150,7 +151,7 @@ public class MBR implements RamaSerializable {
    * @return true if at least one dimension has an infinite bound, false otherwise
    */
   public boolean hasInfiniteBound() {
-    for (int i = 0; i < dimensions; i++) {
+    for (int i = 0; i < mins.length; i++) {
       if (mins[i] == Double.NEGATIVE_INFINITY || maxs[i] == Double.POSITIVE_INFINITY) {
         return true;
       }
@@ -173,7 +174,7 @@ public class MBR implements RamaSerializable {
   public MBR approximatedLimits() {
     double[] newMins = mins.clone();
     double[] newMaxs = maxs.clone();
-    for (int i = 0; i < dimensions; i++) {
+    for (int i = 0; i < mins.length; i++) {
       newMins[i] = approximateLimit(mins[i]);
       newMaxs[i] = approximateLimit(maxs[i]);
     }
@@ -188,14 +189,14 @@ public class MBR implements RamaSerializable {
    * @throws IllegalArgumentException If the point has a different number of dimensions
    */
   public MBR expand(double[] point) {
-    if (point.length != dimensions) {
+    if (point.length != dimensions()) {
       throw new IllegalArgumentException("Point dimensions don't match MBR dimensions");
     }
 
     double[] newMins = mins.clone();
     double[] newMaxs = maxs.clone();
 
-    for (int i = 0; i < dimensions; i++) {
+    for (int i = 0; i < mins.length; i++) {
       if (isEmpty() || point[i] < newMins[i]) {
         newMins[i] = point[i];
       }
@@ -208,7 +209,7 @@ public class MBR implements RamaSerializable {
   }
 
   private boolean hasSameDimensions(MBR other) {
-    return other.dimensions == dimensions;
+    return other.dimensions() == dimensions();
   }
 
   /**
@@ -228,6 +229,7 @@ public class MBR implements RamaSerializable {
       return new MBR(this);
     }
 
+    int dimensions = mins.length;
     double[] newMins = new double[dimensions];
     double[] newMaxs = new double[dimensions];
 
@@ -272,7 +274,7 @@ public class MBR implements RamaSerializable {
     }
 
     double area = 1.0;
-    for (int i = 0; i < dimensions; i++) {
+    for (int i = 0; i < mins.length; i++) {
       double extent = getExtent(i);
       if (Double.isInfinite(extent)) {
         return Double.POSITIVE_INFINITY;
@@ -294,7 +296,7 @@ public class MBR implements RamaSerializable {
     }
 
     double perimeter = 0.0;
-    for (int i = 0; i < dimensions; i++) {
+    for (int i = 0; i < mins.length; i++) {
       double extent = getExtent(i);
       if (Double.isInfinite(extent)) {
         return Double.POSITIVE_INFINITY;
@@ -302,7 +304,7 @@ public class MBR implements RamaSerializable {
       perimeter += extent;
     }
 
-    return perimeter * Math.pow(2, dimensions - 1);
+    return perimeter * Math.pow(2, dimensions() - 1);
   }
 
   /**
@@ -352,7 +354,7 @@ public class MBR implements RamaSerializable {
       return false;
     }
 
-    for (int i = 0; i < dimensions; i++) {
+    for (int i = 0; i < mins.length; i++) {
       if (maxs[i] < other.mins[i] || mins[i] > other.maxs[i]) {
         return false;
       }
@@ -375,7 +377,7 @@ public class MBR implements RamaSerializable {
     }
 
     double overlap = 1.0;
-    for (int i = 0; i < dimensions; i++) {
+    for (int i = 0; i < mins.length; i++) {
       double min = Math.max(mins[i], other.mins[i]);
       double max = Math.min(maxs[i], other.maxs[i]);
       double extent = max - min;
@@ -406,9 +408,10 @@ public class MBR implements RamaSerializable {
   public MBR intersection(MBR other) {
     assert hasSameDimensions(other) : "MBR dimensions must match";
     if (isEmpty() || other.isEmpty() || !overlaps(other)) {
-      return new MBR(dimensions); // Empty MBR
+      return new MBR(mins.length); // Empty MBR
     }
 
+    int dimensions = mins.length;
     double[] newMins = new double[dimensions];
     double[] newMaxs = new double[dimensions];
 
@@ -433,7 +436,7 @@ public class MBR implements RamaSerializable {
       return false;
     }
 
-    for (int i = 0; i < dimensions; i++) {
+    for (int i = 0; i < mins.length; i++) {
       if (maxs[i] < other.mins[i] || mins[i] > other.maxs[i]) {
 	return false;
       }
@@ -450,7 +453,7 @@ public class MBR implements RamaSerializable {
    * @throws IllegalArgumentException If the point has a different number of dimensions
    */
   public boolean contains(double[] point) {
-    if (point.length != dimensions) {
+    if (point.length != dimensions()) {
       throw new IllegalArgumentException("Point dimensions don't match MBR dimensions");
     }
 
@@ -458,7 +461,7 @@ public class MBR implements RamaSerializable {
       return false;
     }
 
-    for (int i = 0; i < dimensions; i++) {
+    for (int i = 0; i < mins.length; i++) {
       if (point[i] < mins[i] || point[i] > maxs[i]) {
         return false;
       }
@@ -480,7 +483,7 @@ public class MBR implements RamaSerializable {
       return false;
     }
 
-    for (int i = 0; i < dimensions; i++) {
+    for (int i = 0; i < mins.length; i++) {
       if (other.mins[i] < mins[i] || other.maxs[i] > maxs[i]) {
         return false;
       }
@@ -513,7 +516,7 @@ public class MBR implements RamaSerializable {
    * @throws IllegalArgumentException If the point has a different number of dimensions
    */
   public double minDistance(double[] point) {
-    if (point.length != dimensions) {
+    if (point.length != dimensions()) {
       throw new IllegalArgumentException("Point dimensions don't match MBR dimensions");
     }
 
@@ -526,7 +529,7 @@ public class MBR implements RamaSerializable {
     }
 
     double sumSquared = 0.0;
-    for (int i = 0; i < dimensions; i++) {
+    for (int i = 0; i < mins.length; i++) {
       if (point[i] < mins[i]) {
         double dist = mins[i] - point[i];
         sumSquared += dist * dist;
@@ -559,7 +562,7 @@ public class MBR implements RamaSerializable {
     }
 
     double sumSquared = 0.0;
-    for (int i = 0; i < dimensions; i++) {
+    for (int i = 0; i < mins.length; i++) {
       if (maxs[i] < other.mins[i]) {
         double dist = other.mins[i] - maxs[i];
         sumSquared += dist * dist;
@@ -583,6 +586,7 @@ public class MBR implements RamaSerializable {
       return null;
     }
 
+    int dimensions = mins.length;
     double[] center = new double[dimensions];
     for (int i = 0; i < dimensions; i++) {
       if (Double.isInfinite(mins[i]) && Double.isInfinite(maxs[i])) {
@@ -601,38 +605,11 @@ public class MBR implements RamaSerializable {
 
   @Override
   public String toString() {
-    if (isEmpty()) {
-      return "MBR[empty, dimensions=" + dimensions + "]";
-    }
-
-    StringBuilder sb = new StringBuilder();
-    sb.append("MBR[dimensions=").append(dimensions).append(", ");
-
-    for (int i = 0; i < dimensions; i++) {
-      if (i > 0) {
-        sb.append(", ");
-      }
-      sb.append("dim").append(i).append("=(");
-
-      if (mins[i] == Double.NEGATIVE_INFINITY) {
-        sb.append("-∞");
-      } else {
-        sb.append(mins[i]);
-      }
-
-      sb.append(", ");
-
-      if (maxs[i] == Double.POSITIVE_INFINITY) {
-        sb.append("+∞");
-      } else {
-        sb.append(maxs[i]);
-      }
-
-      sb.append(")");
-    }
-
-    sb.append("]");
-    return sb.toString();
+    return "MBR [mins="
+      + Arrays.toString(mins)
+      + ", maxs=" + Arrays.toString(maxs)
+      + ", dimensions=" + mins.length
+      + "]";
   }
 
   @Override
@@ -645,7 +622,7 @@ public class MBR implements RamaSerializable {
     }
 
     MBR other = (MBR) obj;
-    if (dimensions != other.dimensions) {
+    if (dimensions() != other.dimensions()) {
       return false;
     }
 
@@ -654,7 +631,7 @@ public class MBR implements RamaSerializable {
       return true;
     }
 
-    for (int i = 0; i < dimensions; i++) {
+    for (int i = 0; i < mins.length; i++) {
       if (Double.compare(mins[i], other.mins[i]) != 0 ||
           Double.compare(maxs[i], other.maxs[i]) != 0) {
         return false;
@@ -669,12 +646,12 @@ public class MBR implements RamaSerializable {
     int hash = 7;
 
     if (!isEmpty()) {
-      for (int i = 0; i < dimensions; i++) {
+      for (int i = 0; i < mins.length; i++) {
         hash = 31 * hash + Double.hashCode(mins[i]);
         hash = 31 * hash + Double.hashCode(maxs[i]);
       }
     } else {
-      hash = 31 * hash + dimensions;
+      hash = 31 * hash + mins.length;
     }
 
     return hash;
