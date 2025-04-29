@@ -1,5 +1,8 @@
 package com.rpl.rama.helpers.spatial;
 
+import clojure.lang.IPersistentVector;
+import clojure.lang.APersistentVector;
+
 import com.rpl.rama.Agg;
 import com.rpl.rama.Block;
 import com.rpl.rama.CompoundAgg;
@@ -26,12 +29,12 @@ import java.util.List;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
+import clojure.lang.IPersistentVector;
 import rpl.rama.java_api.integration__init;
 
 public class RTree implements RamaSerializable {
   private final int dimensions;
   private final ModuleUniqueIdPState idGenerator;
-  private final String objectsPstate;
   private final String nodesPstate;
   private final String rootPstate;
 
@@ -61,13 +64,10 @@ public class RTree implements RamaSerializable {
     this.idGenerator = new ModuleUniqueIdPState("$$" + treeName + "__nodeId");
     this.rootPstate = "$$" + treeName + "__root";
     this.nodesPstate = "$$" + treeName + "__nodes";
-    this.objectsPstate = "$$" + treeName + "__objects";
   }
 
   private void declarePStates(final MicrobatchTopology topology) {
     idGenerator.declarePState(topology);
-    topology.pstate(objectsPstate,
-                    PState.mapSchema(Long.class, Object.class));
     topology.pstate(rootPstate,
                     Object.class).global();
     topology.pstate(nodesPstate,
@@ -78,6 +78,10 @@ public class RTree implements RamaSerializable {
     return (NonLeafNode) new NonLeafNode(id, id)
         .add(child1.bounds(), child1.nodeId())
         .add(child2.bounds(), child2.nodeId());
+    }
+
+  public static NonLeafNode createRootNode(long id) {
+    return new NonLeafNode(id, id);
     }
 
   boolean isFull(Node node) {
@@ -197,7 +201,7 @@ public class RTree implements RamaSerializable {
               // Let P be the parent node of N
               Block
               .each(Node::parentId, nodeVar).out(parentIdVar)
-              .select(objectsPstate, Path.key(parentIdVar)).out(parentVar)
+              // .select(objectsPstate, Path.key(parentIdVar)).out(parentVar)
               // .each(RTree<T>::isFull, this, parentVar).out(isParentFullVar)
 
               // and let EN be N's entry in
@@ -357,7 +361,7 @@ public class RTree implements RamaSerializable {
       .each(Node::nodeId, rootNodeVar).out(rootNodeIdVar)
       .macro(chooseLeaf(rootNodeVar, leafNodeVar, leafNodeIsRootVar))
       .macro(idGenerator.genId(idVar))
-      .localTransform(objectsPstate, Path.key(idVar).termVal(objectVar))
+      // .localTransform(objectsPstate, Path.key(idVar).termVal(objectVar))
       .macro(insertInNode(leafNodeVar, boundsVar, idVar, newRootNodeVar))
       // // 12. [Add record to leaf node.]
       // .each(RTree<T>::isFull, this, leafNodeVar).out(isFullVar)
@@ -398,8 +402,11 @@ public class RTree implements RamaSerializable {
 
   /** Perform all operations from nodeOpsVar on nodeVar.
 
+      This does not persist the updated node, or the new siblings.
+
       newSiblingIdVar will contain any new sibling nodes that have been created.
    */
+
   protected static Block updateNode(
     final int branchingFactor,
     final ModuleUniqueIdPState idGenerator,
@@ -408,21 +415,29 @@ public class RTree implements RamaSerializable {
     // outputs
     final String newSiblingsVar) {
 
+    // this could just be a java function, except for the id-gen
     return Block
         .each(Ops.PRINTLN, "updateNode", nodeVar, nodeOpsVar)
+        // NOTE - this is a temp var to avoid an array list literal in the Loop
+        // var, which causes it to use the object cache.
+        .each(RTreeHelpers::newArrayList).out("*emptySiblings")
+        .each(Ops.PRINTLN, "before loop")
         .loopWithVars(
           LoopVars
           .var("*currentNode", nodeVar)
           .var("*nodeOpsRemaining", nodeOpsVar)
-          .var("*newSiblings", new ArrayList<>()),
+          .var("*siblings", "*emptySiblings"),
           Block
+          .each(Ops.PRINTLN, "start of loop, current node", "*currentNode")
+          .each(Ops.PRINTLN, "start of loop, opsRemaining", "*nodeOpsRemaining")
           .ifTrue(
             new Expr(Ops.AND,
                      new Expr(Node::isFull, "*currentNode", branchingFactor),
                      new Expr(Ops.NOT,
-                              new Expr(List<Object>::isEmpty,
+                              new Expr(APersistentVector::isEmpty,
                                        "*nodeOpsRemaining"))),
             Block
+            .each(Ops.PRINTLN, "Needs split block")
             .macro(idGenerator.genId("*newNodeId"))
             .each(Node::newSibling,
                   "*currentNode",
@@ -431,32 +446,33 @@ public class RTree implements RamaSerializable {
                 l.add(node);
                 return l;
             },
-              "*newSiblings",
+              "*siblings",
               "*newNode")
             .continueLoop("*newNode",
                           "*nodeOpsRemaining",
-                          "*newSiblings"),
+                          "*siblings")
+            ,
             Block
+            .each(Ops.PRINTLN, "no split block")
             .each(List<Node>::size, "*nodeOpsRemaining").out("*opCount")
             .ifTrue(new Expr(Ops.EQUAL, "*opCount", 0),
-                    Block.emitLoop("*newSiblings"),
                     Block
-                    .each(List<Node>::get,
-                          "*nodeOpsRemaining",
-                          0).out("*nodeOp")
+                    .each(Ops.PRINTLN, "Emitting")
+                    .emitLoop("*siblings"),
+                    Block
+                    .each(Ops.PRINTLN, "more ops")
+                    .each(APersistentVector::peek,
+                          "*nodeOpsRemaining").out("*nodeOp")
                     .macro(extractJavaFields("*nodeOp", "*bounds", "*objectId"))
                     .each(Node::add, "*currentNode", "*bounds", "*objectId")
-                    .each((List<Node> l, Integer index) -> {
-                        l.remove((int)index);
-                        return l; },
-                      "*nodeOpsRemaining",
-                      0)
+                    .each(APersistentVector::pop,
+                          "*nodeOpsRemaining").out("*nodeOpsRemaining")
                     .continueLoop("*currentNode",
                                   "*nodeOpsRemaining",
-                                  "*newSiblings"))))
-        .out(newSiblingsVar);
+                                  "*siblings"))
+                  )).out(newSiblingsVar)
+        .each(Ops.PRINTLN, "after loop");
   }
-
 
   /**
      Given a leaf node L from which an entry has been deleted, eliminate the
@@ -518,20 +534,56 @@ public class RTree implements RamaSerializable {
     final String idGeneratorsVar = Helpers.genVar("idGenerators");
     final String idGeneratorVar = Helpers.genVar("idGenerator");
     return Block
-      .each(Node::isLeaf, rootVar).out(isLeafVar)
-      .each(Ops.PRINTLN, "search isLeaf", isLeafVar)
-      .ifTrue(new Expr(Ops.EQUAL, isLeafVar, false),
-      // S1. [Search subtrees.] If T is not a leaf, check each entry E to
-      // determine whether E.I overlaps S. For all overlapping entries, invoke
-      // Search on the tree whose root node is pointed to by E.p .
-              Block.each(Ops.IDENTITY, "todo").out(outVar),
-      // S2. [Search leaf node.] If T is a leaf, check all entries E to
-      // determine whether E.I overlaps S. If so, E is a qualifying record.
-              Block
-              .each(Node::overlapping, rootVar, boundsVar).out(idGeneratorsVar)
-              .each(Ops.EXPLODE, idGeneratorsVar).out(idGeneratorVar)
-              .localSelect(objectsPstate, Path.key(idGeneratorVar)).out(outVar)
-      );
+        .each(Ops.TUPLE, rootVar).out("*nodes")
+        .loopWithVars(
+          LoopVars.var("*node", rootVar),
+          // // LoopVars.var("*nodes", "*nodes"),
+          // Block
+          // // .each(Ops.EXPLODE, "*nodes").out("*node")
+          Block
+          .each(Node::isLeaf, "*node").out(isLeafVar)
+          .each(Ops.PRINTLN, "search isLeaf", isLeafVar)
+          .ifTrue(new Expr(Ops.EQUAL, isLeafVar, false),
+                  // S1. [Search subtrees.] If T is not a leaf, check each entry E to
+                  // determine whether E.I overlaps S. For all overlapping entries, invoke
+                  // Search on the tree whose root node is pointed to by E.p .
+                  Block
+                  .each(Node::overlapping, rootVar, boundsVar).out("*childIds")
+                  .each(Ops.PRINTLN, "Child ids", "*childIds")
+                  .loopWithVars(
+                    LoopVars.var("*ids", "*childIds"),
+                    Block
+                    .each(Ops.PRINTLN, "Loop body", "*ids")
+                    .each(List<Long>::isEmpty, "*childIds").out("*isEmpty")
+                    .each(Ops.PRINTLN, "Loop done?", "*isEmpty")
+                    .ifTrue(
+                      new Expr(Ops.NOT, new Expr(Ops.IDENTITY, "*isEmpty")),
+                      Block
+                      .each(List<Long>::get, "*ids", 0).out("*childId")
+                      .localSelect(nodesPstate,
+                                   Path.key("*childId")).out("*childNode")
+                      .each(Ops.PRINTLN, "Child id", "*childId", "*childNode")
+                      .emitLoop("*childNode")
+                      .each((List<Long> ids) -> {
+                            ids.remove(0);
+                            return ids;
+                      },
+                        "*childIds").out("*remainingIds")
+                      .each(Ops.PRINTLN, "continue child loop", "*remainingIds")
+                      .continueLoop("*remainingIds")
+                                )).out("*child")
+                  .each(Ops.PRINTLN, "Continue outer loop", "*child")
+                  .continueLoop("*child"),
+
+                  // S2. [Search leaf node.] If T is a leaf, check all entries E to
+                  // determine whether E.I overlaps S. If so, E is a qualifying record.
+                  Block
+                  .each(Ops.PRINTLN, "Single node")
+                  .each(Node::overlapping, rootVar, boundsVar).out("*ids")
+                  .each(Ops.PRINTLN, "Matching", "*ids")
+                  .each(Ops.EXPLODE, "*ids").out("*id")
+                  .emitLoop("*id")))
+        .out(outVar);
   }
 
   public static void addObject(MBR bounds, Long objectId, OutputCollector collector) {
@@ -557,6 +609,9 @@ public class RTree implements RamaSerializable {
   //                   dataVar).out(modificationVar)
   //                 .agg(Agg.list(modificationVar)).out("$$p"));}
 
+  /* Explode the contents of var.
+     Var can refer to a microbatch, or a temporary pstate.
+  */
   private Block explode(final String var, final String outVar) {
     if (var.startsWith("*")) {
       return
@@ -578,7 +633,7 @@ public class RTree implements RamaSerializable {
     final String dataVar = Helpers.genVar("*data");
     final String modificationVar = Helpers.genVar("*modification");
     final String opVar = Helpers.genVar("*op");
-    final String leafNodeVar = Helpers.genVar("leafNode");
+    // final String leafNodeVar = Helpers.genVar("leafNode");
     final String leafNodeIsRootVar = Helpers.genVar("leafNodeIsRoot");
     final String rootNodeVar = Helpers.genVar("rootNode");
     final String rootNodeIdVar = Helpers.genVar("rootNodeId");
@@ -591,10 +646,12 @@ public class RTree implements RamaSerializable {
     // TODO hash by node id to start with.
     // TODO don't need genVar's for names inside a single batch block
     return Block
+        // can't have batch block inside batch block.
         .batchBlock(
           Block
           .macro(rootNode(rootNodeVar))
           .macro(explode(microbatchVar, "*data"))
+          .each(Ops.PRINTLN, "DATA", "*data")
           .each((T data, OutputCollector collector) -> {
               RTreeCollector c = new RTreeCollector(collector);
               dataConvertor.invoke(data, c);
@@ -608,18 +665,19 @@ public class RTree implements RamaSerializable {
           // TODO make this return the nodeId
           .macro(chooseLeaf(rootNodeVar,
                             "*bounds",
-                            leafNodeVar,
+                            nodeVar,
                             leafNodeIsRootVar))
-          .globalPartition()
+          // NOTE assumes chooseLeaf emits on nodeVar's partition
+          .directPartition(new Expr(Ops.CURRENT_TASK_ID))
           .compoundAgg(
             CompoundAgg.map(
-              leafNodeVar,
+              nodeVar,
               Agg.list("*modification"))).out(nodeChangeTableVar))
 
         // Perform the insertion, looping to insert changes into parent nodes
         .loop(
             Block
-            .each(Ops.PRINTLN, "loop")
+            .each(Ops.PRINTLN, "loop body start")
             .batchBlock(
               Block
               .allPartition()
@@ -630,49 +688,100 @@ public class RTree implements RamaSerializable {
             .each(Ops.PRINTLN, "maxSize", "*maxSize")
             .ifTrue(
               new Expr(Ops.EQUAL, 0, "*maxSize"),
-              Block.emitLoop(),
+              Block
+              .each(Ops.PRINTLN, "Loop emitting")
+              .emitLoop(),
               Block
               .batchBlock(
                 Block
                 .localSelect(nodeChangeTableVar, Path.all()).out(nodeOpsVar)
-
-                .macro(updateNode(nodeVar,
-                                  nodeOpsVar,
+                .each(Ops.FIRST, nodeOpsVar).out(nodeVar)
+                .each(Ops.LAST, nodeOpsVar).out("*nodeOpsList")
+                .macro(updateNode(M,
+                                  idGenerator,
+                                  nodeVar,
+                                  "*nodeOpsList",
                                   "*newSiblings"))
                 .each(Ops.PRINTLN,"UpdateNodes new siblings", "*newSiblings")
                 .each(List<Object>::size,"*newSiblings").out("*numSiblings")
+                .each(Node::isRoot, nodeVar).out("*isRoot")
                 .ifTrue(new Expr(Ops.EQUAL, 0, "*numSiblings"),
                         Block
                         .each(Ops.PRINTLN,"no new siblings")
-                        .each(Node::isRoot, nodeVar).out("*isRoot")
                         .ifTrue(new Expr(Ops.IDENTITY, "*isRoot"),
-                                Block.localTransform(rootPstate,
-                                                     Path.termVal(nodeVar)))
-                        .each(Ops.IDENTITY, null).out("*newOp"))
+                                Block
+                                .localTransform(rootPstate,
+                                                Path.termVal(nodeVar)),
+                                Block
+                                .each(Node::nodeId, nodeVar).out("*nodeId")
+                                .localTransform(nodesPstate,
+                                                Path
+                                                .key("*nodeId")
+                                                .termVal(nodeVar)))
+                        .each(Ops.IDENTITY, null).out("*newOp")
+                        .each(Node::parentId, nodeVar).out("*parentId")
+                        .each(Ops.IDENTITY, nodeVar).out("*parent"),
+                        Block
+                        .ifTrue(new Expr(Ops.IDENTITY, "*isRoot"),
+                                // new siblings and the node was root - we need
+                                // a new root node.
+                                Block
+                                .each(Ops.PRINTLN, "node was root")
+                                .each(Node::nodeId, nodeVar).out("*nodeId")
+                                .each(Node::bounds, nodeVar).out("*nodeBounds")
+                                .macro(idGenerator.genId("*parentId"))
+                                .each(RTree::createRootNode,
+                                      "*parentId").out("*parent")
+                                .each(Node::add,
+                                      "*parent",
+                                      "*nodeBounds",
+                                      "*nodeId")
+                                .localTransform(rootPstate,
+                                                Path.termVal("*parent"))
+                                .each(Node::setParentId,
+                                      nodeVar, "*parentId")
+                                .localTransform(nodesPstate,
+                                                Path
+                                                .key("*nodeId")
+                                                .termVal(nodeVar))
+                                .localTransform(nodesPstate,
+                                                Path
+                                                .key("*parentId")
+                                                .termVal("*parent")),
+                                Block
+                                .each(Node::nodeId, nodeVar).out("*nodeId")
+                                .localTransform(nodesPstate,
+                                                Path
+                                                .key("*nodeId")
+                                                .termVal(nodeVar))
+                                .each(Node::parentId, nodeVar).out("*parentId")
+                                .each(Ops.IDENTITY,nodeVar).out("*parent")))
                 .each(Ops.EXPLODE, "*newSiblings").out("*newSibling")
                 .each(Node::bounds, "*newSibling").out("*newBounds")
                 .each(Node::nodeId, "*newSibling").out("*newId")
                 .each(RTreeCollector.AddObject::mkAddObject,
-                              "*newBounds",
-                              "*newId").out("*newOp")
-                .each(Node::parentId, nodeVar).out("*parentNodeId")
-                .each(Ops.PRINTLN,"parent node id", "*parentNodeId")
-                .globalPartition()
+                      "*newBounds",
+                      "*newId").out("*newOp")
+                .localTransform(nodesPstate,
+                                Path.key("*newId").termVal("*newSibling"))
+                .each(Ops.PRINTLN,"parent node id", "*parent")
+                .hashPartition("*parentId")
                 .compoundAgg(
                   CompoundAgg.map(
-                    "*parentNodeId",
+                    "*parent",
                     Agg.list("*newOp"))).out("*newChangeTable")
+                .each(Ops.PRINTLN, "new change table", "*newChangeTable")
                 .localTransform(
                   nodeChangeTableVar,
                   Path.termVal("*newChangeTable"))
-                .each(Ops.PRINTLN,"End of loop body"))
+                .each(Ops.PRINTLN,"End of loop body", "*newChangeTable"))
               .continueLoop()))
+        .each(Ops.PRINTLN, "Loop complete")
 
         // Broadcast root node to all tasks
         .batchBlock(
           Block
           .each(Ops.PRINTLN, "Updating global partitions")
-          .globalPartition()
           .macro(rootNode("*rootNode"))
           .allPartition()
           .localTransform(rootPstate, Path.termVal("*rootNode")))
@@ -682,6 +791,7 @@ public class RTree implements RamaSerializable {
     topologies.query("objectsInBounds", "*bounds").out("*objects")
         .each(Ops.PRINTLN, "objectsInBounds", "*bounds")
         .localSelect(rootPstate, Path.stay()).out("*root")
+        .each(Ops.PRINTLN, "root", "*root")
         .macro(search("*bounds", "*root", "*objects"))
         .originPartition()
         .agg(Agg.list("*objects")).out("*objects");

@@ -3,16 +3,13 @@ package com.rpl.rama.helpers.spatial;
 import com.rpl.rama.AckLevel;
 import com.rpl.rama.Agg;
 import com.rpl.rama.Block;
-import com.rpl.rama.CompoundAgg;
 import com.rpl.rama.Depot;
 import com.rpl.rama.Expr;
-import com.rpl.rama.Helpers;
 import com.rpl.rama.Path;
 import com.rpl.rama.PState;
 import com.rpl.rama.QueryTopologyClient;
 import com.rpl.rama.RamaModule;
 import com.rpl.rama.helpers.ModuleUniqueIdPState;
-import com.rpl.rama.helpers.TopologyUtils.ExtractJavaField;
 import static com.rpl.rama.helpers.TopologyUtils.extractJavaFields;
 
 import com.rpl.rama.module.MicrobatchTopology;
@@ -27,6 +24,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -58,7 +56,6 @@ public class RTreeTest {
                               branchingFactor,
                               minChildren,
                               "test");
-      // TODO user provides object ID's directly
       rTree.declare(topologies, m);
 
       // ETL
@@ -70,32 +67,19 @@ public class RTreeTest {
             .hashPartition("$$object", "*objectId")
             .localTransform("$$object",
                             Path.key("*objectId").termVal("*object"))
+            .each(Ops.PRINTLN, "Added object", "*objectId", "*object")
             .globalPartition()
             .agg(Agg.list(new Expr(Ops.TUPLE,
                                    "*bounds",
                                    "*objectId"))).out("$$objects"))
-          .batchBlock(
-            Block
-            .allPartition()
             .macro(
               rTree.handleModifications(
                 "$$objects",
                 (List<Object> data, RTreeCollector collector) -> {
                   collector.addObject(
                     (MBR)data.get(0),
-                    (Long)data.get(1));})));
+                    (Long)data.get(1));}));
     }
-
-    // // TODO go back to the functional approach
-    // public Block processData(final String dataVar, final String modificationVar) {
-    //   final String objectIdVar = Helpers.genVar("objectId");
-    //   return Block
-    //     .macro(idGenerator.genId(objectIdVar))
-    //     .macro(extractJavaFields(dataVar, "*bounds", "*object"))
-    //     .localTransform("$$object", Path.key(objectIdVar).termVal("*object"))
-    //     .each(Ops.PRINTLN, "Inserted object:", objectIdVar)
-    //     .each(RTree::addObject, "*bounds", objectIdVar).out(modificationVar);
-    // }
   }
 
 
@@ -123,39 +107,46 @@ public class RTreeTest {
       final MBR twoBounds = new MBR(origin, twos);
       final MBR twoHundredBounds = new MBR(oneHundreds, twoHundreds);
 
-      System.out.println("AAAAAAA");
+      System.out.println("START");
+
       // Test that we can append an object in the root node and query for it.
       depot.append(new AddObject(oneBounds, "a"), AckLevel.ACK);
+      System.out.println("Appended one entry");
       cluster.waitForMicrobatchProcessedCount(module.getClass().getName(),
                                               "m",
                                               1);
-      System.out.println("AAAAAAA 1");
+      System.out.println("Processed one entry in root node");
       {
         DepotPartitionInfo dpi = depot.getPartitionInfo(0);
         assertEquals(1, dpi.getEndOffset());
 
-        System.out.println("AAAAAAA 2");
-        String a = object.selectOne(Path.key(0));
-        assertNotNull(a);
-        assertEquals("a", a);
+        String a = object.selectOne(Path.key(0L));
+        assertNotNull("An object has been recorded", a);
+        assertEquals("Object has been recorded correctly", "a", a);
 
-        System.out.println("AAAAAAA 3");
         INode node = root.selectOne(Path.stay());
         assertNotNull(node);
         assertTrue(node.isLeaf());
         assertTrue(node instanceof LeafNode);
         assertEquals(1, ((Node)node).count());
 
-        assertEquals(Arrays.asList("a"), q.invoke(oneBounds));
-        assertEquals(Arrays.asList("a"), q.invoke(twoBounds));
-        assertEquals(Arrays.asList(), q.invoke(twoHundredBounds));
+        assertEquals(new ArrayList<>(Arrays.asList(0L)),
+                     new ArrayList<>((List<Long>)q.invoke(oneBounds)));
+        assertEquals(new ArrayList<>(Arrays.asList(0L)),
+                     new ArrayList<>((List<Long>)q.invoke(twoBounds)));
+        assertEquals(new ArrayList<>(Arrays.asList()),
+                     new ArrayList<>((List<Long>)q.invoke(twoHundredBounds)));
       }
 
-      System.out.println("BBBBBBB");
 
       // Append another object in the root node and query for it.
+      /* depot.append(new AddObject(oneBounds, "a"), AckLevel.ACK); */
+      System.out.println("Appended second entry");
       depot.append(new AddObject(twoBounds, "b"), AckLevel.ACK);
-
+      cluster.waitForMicrobatchProcessedCount(module.getClass().getName(),
+                                              "m",
+                                              2);
+      System.out.println("Processed second entry in root node");
       {
         DepotPartitionInfo dpi = depot.getPartitionInfo(0);
         assertEquals(2, dpi.getEndOffset());
@@ -165,27 +156,56 @@ public class RTreeTest {
         assertTrue(node.isLeaf());
         assertEquals(2, node.count());
 
-        assertEquals(Arrays.asList("a", "b"), q.invoke(oneBounds));
-        assertEquals(Arrays.asList("a", "b"), q.invoke(twoBounds));
-        assertEquals(Arrays.asList(), q.invoke(twoHundredBounds));
+        assertEquals(new ArrayList<>(Arrays.asList(0L, 1L)),
+                     new ArrayList<>((List<Long>)q.invoke(oneBounds)));
+        assertEquals(new ArrayList<>(Arrays.asList(0L, 1L)),
+                     new ArrayList<>((List<Long>)q.invoke(twoBounds)));
+        assertEquals(new ArrayList<>(Arrays.asList()),
+                     new ArrayList<>((List<Long>)q.invoke(twoHundredBounds)));
       }
 
-      System.out.println("CCCCCCCC");
+      System.out.println("Appended third entry");
       // Append another object when the root node is full and query for it.
       depot.append(new AddObject(twoBounds, "c"), AckLevel.ACK);
-
+      cluster.waitForMicrobatchProcessedCount(module.getClass().getName(),
+                                              "m",
+                                              3);
+      System.out.println("Processed third entry, splitting root node");
       {
         DepotPartitionInfo dpi = depot.getPartitionInfo(0);
         assertEquals(3, dpi.getEndOffset());
 
-        Node node = root.selectOne(Path.stay());
+        final Node node = root.selectOne(Path.stay());
+        final Node node0 = nodes.selectOne(Path.key(0));
+        final Node node1 = nodes.selectOne(Path.key(1));
+
+        System.out.println("Root node after processing " + node);
+        System.out.println("Node 0 after processing " + node0);
+        System.out.println("Node 1 after processing " + node1);
+
         assertTrue(node instanceof Node);
         assertFalse(node.isLeaf());
-        assertEquals(1, node.count());
+        assertEquals(2, node.nodeId());
+        assertEquals(2, node.parentId());
+        assertEquals(2, node.count()); // 0, 1
+        // assertEquals(2, node.children);
 
-        assertEquals(Arrays.asList("a", "b", "c"), q.invoke(oneBounds));
-        assertEquals(Arrays.asList("a", "b", "c"), q.invoke(twoBounds));
-        assertEquals(Arrays.asList(), q.invoke(twoHundredBounds));
+        assertEquals(0, node0.nodeId());
+        assertEquals(2, node0.parentId());
+        assertEquals(2, node0.count()); // object 0,1
+        // assertEquals(2, node0.children);
+
+        assertEquals(1, node1.nodeId());
+        assertEquals(2, node1.parentId());
+        assertEquals(1, node1.count()); // object 2
+        // assertEquals(1, node1.children);
+
+        assertEquals(new ArrayList<>(Arrays.asList(0L, 1L, 2L)),
+                     new ArrayList<>((List<Long>)q.invoke(oneBounds)));
+        assertEquals(new ArrayList<>(Arrays.asList(0, 1L, 2L)),
+                     new ArrayList<>((List<Long>)q.invoke(twoBounds)));
+        assertEquals(new ArrayList<>(Arrays.asList()),
+                     new ArrayList<>((List<Long>)q.invoke(twoHundredBounds)));
       }
     }
     logger.error("allFeaturesTest done");

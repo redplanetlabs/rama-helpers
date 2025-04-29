@@ -22,6 +22,9 @@ import java.util.function.Function;
 
 import org.junit.Test;
 
+import clojure.lang.APersistentVector;
+import clojure.lang.PersistentVector;
+
 public class RTreeUnitTest {
 
   @Test
@@ -29,7 +32,7 @@ public class RTreeUnitTest {
     final int branchingFactor = 2;
     TestModuleUniqueIdPState idGenerator = new TestModuleUniqueIdPState();
     Node rootNode = new LeafNode(-1, -1);
-    List<RTreeCollector.AddObject> ops = new ArrayList<>();
+    PersistentVector ops = PersistentVector.EMPTY;
     try (TestPState objectId = TestPState.create(Long.class)) {
       Block
           .each(Ops.IDENTITY, objectId).out("$$objectId")
@@ -60,7 +63,7 @@ public class RTreeUnitTest {
     VarRef<List<Node>> newSiblings = new VarRef<>("*newSiblings");
 
     // Create a root node with one child
-    ops.add(new RTreeCollector.AddObject(oneBounds, new Long(1)));
+    ops = ops.cons(new RTreeCollector.AddObject(oneBounds, new Long(1)));
     {
       Block
           .each(Ops.IDENTITY, rootNode).out(node.name)
@@ -79,8 +82,7 @@ public class RTreeUnitTest {
     }
 
     // Create a full root node
-    ops.add(new RTreeCollector.AddObject(oneBounds, new Long(1)));
-    ops.add(new RTreeCollector.AddObject(twoBounds, new Long(2)));
+    ops=ops.cons(new RTreeCollector.AddObject(twoBounds, new Long(2)));
     assertEquals(2, ops.size());
     {
       Block
@@ -95,16 +97,14 @@ public class RTreeUnitTest {
           .macro(node.capture())
           .execute();
       assertEquals("node has two child", 2, node.get().count());
-      assertEquals(oneBounds, node.get().children.get(0).bounds);
-      assertEquals(twoBounds, node.get().children.get(1).bounds);
-      assertEquals(1, node.get().children.get(0).id);
-      assertEquals(2, node.get().children.get(1).id);
+      assertEquals(twoBounds, node.get().children.get(0).bounds);
+      assertEquals(oneBounds, node.get().children.get(1).bounds);
+      assertEquals(1, node.get().children.get(1).id);
+      assertEquals(2, node.get().children.get(0).id);
     }
 
     // Create an over full root node, requiring a split
-    ops.add(new RTreeCollector.AddObject(oneBounds, new Long(1)));
-    ops.add(new RTreeCollector.AddObject(twoBounds, new Long(2)));
-    ops.add(new RTreeCollector.AddObject(twoHundredBounds, new Long(200)));
+    ops = ops.cons(new RTreeCollector.AddObject(oneBounds, new Long(3)));
     assertEquals(3, ops.size());
     {
       Block
@@ -123,8 +123,33 @@ public class RTreeUnitTest {
       assertEquals("node has two child", 2, node.get().count());
       assertEquals(oneBounds, node.get().children.get(0).bounds);
       assertEquals(twoBounds, node.get().children.get(1).bounds);
-      assertEquals(1, node.get().children.get(0).id);
+      assertEquals(3, node.get().children.get(0).id);
       assertEquals(2, node.get().children.get(1).id);
+    }
+
+    // Create an over full root node, requiring two new nodes
+    ops = ops.cons(new RTreeCollector.AddObject(twoBounds, new Long(4)));
+    ops = ops.cons(new RTreeCollector.AddObject(twoBounds, new Long(5)));
+    assertEquals(5, ops.size());
+    {
+      Block
+          .each(Ops.IDENTITY, rootNode).out(node.name)
+          .each(Ops.IDENTITY, ops).out("*nodeOps")
+          .macro(RTree.updateNode(
+            branchingFactor,
+            idGenerator,
+            node.name,
+            "*nodeOps",
+            newSiblings.name))
+          .macro(node.capture())
+          .macro(newSiblings.capture())
+          .execute();
+      assertEquals("two new siblings created", 2, newSiblings.get().size());
+      assertEquals("node has two child", 2, node.get().count());
+      assertEquals(twoBounds, node.get().children.get(0).bounds);
+      assertEquals(twoBounds, node.get().children.get(1).bounds);
+      assertEquals(5, node.get().children.get(0).id);
+      assertEquals(4, node.get().children.get(1).id);
     }
   }
 

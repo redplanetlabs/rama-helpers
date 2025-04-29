@@ -65,6 +65,11 @@ public abstract class Node implements INode, RamaSerializable {
     return parent;
   }
 
+  public Node setParentId(long parentId) {
+    this.parent = parentId;
+    return this;
+  }
+
   public boolean isRoot() {
     return id == parent;
   }
