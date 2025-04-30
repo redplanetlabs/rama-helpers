@@ -146,184 +146,197 @@ public class RTree implements RamaSerializable {
       .each(LeafNode::splitNode, leafNodeVar, newNodeIdVar, m).out(newNodeVar);
   }
 
-  /** Adjust tree.
-   * Persists newNodes into the tree.
-   */
-  private Block adjustTree(final String nodeVar,
-                           final String newNodeVar,
-                           /* final String nodeIsRootVar, */
-                           /* final String needsNewRootVar, */
-                           final String newParentVar) {
-    final String parentIdVar = Helpers.genVar("parentId");
-    final String parentVar = Helpers.genVar("parent"); // P
-    final String nodeIdVar = Helpers.genVar("nodeId");
-    final String isParentFullVar = Helpers.genVar("isParentFull");
-    final String newParentsVar = Helpers.genVar("newParents");
-    final String newNodeBoundsVar = Helpers.genVar("newNodeBounds");
-    final String newNodeIdVar = Helpers.genVar("newNodeIdVar");
-    final String newParentIdVar = Helpers.genVar("newParentId");
-    final String nodeIsRootVar = Helpers.genVar("nodeIsRoot");
-    // AT1. [Initialize.] Set N=L. If L was split previously, set NN to be the
-    // resulting second node.
+  // /** Adjust tree.
+  //  * Persists newNodes into the tree.
+  //  */
+  // private Block adjustTree(final String nodeVar,
+  //                          final String newNodeVar,
+  //                          /* final String nodeIsRootVar, */
+  //                          /* final String needsNewRootVar, */
+  //                          final String newParentVar) {
+  //   final String parentIdVar = Helpers.genVar("parentId");
+  //   final String parentVar = Helpers.genVar("parent"); // P
+  //   final String nodeIdVar = Helpers.genVar("nodeId");
+  //   final String isParentFullVar = Helpers.genVar("isParentFull");
+  //   final String newParentsVar = Helpers.genVar("newParents");
+  //   final String newNodeBoundsVar = Helpers.genVar("newNodeBounds");
+  //   final String newNodeIdVar = Helpers.genVar("newNodeIdVar");
+  //   final String newParentIdVar = Helpers.genVar("newParentId");
+  //   final String nodeIsRootVar = Helpers.genVar("nodeIsRoot");
+  //   // AT1. [Initialize.] Set N=L. If L was split previously, set NN to be the
+  //   // resulting second node.
+  //   return Block
+  //     .each(Ops.PRINTLN, "adjustTree")
+  //     // .each(Ops.LOG_ERROR, logger, "adjustTree")
+  //     /* .each(Ops.EXPAND, newNodesVar).out(nodeVar, newNodeVar) */
+  //     .each(Node::nodeId, nodeVar).out(nodeIdVar)
+  //     // AT2. [Check if done.] If N is the root, stop.
+  //     // .loopWithVars(LoopVars
+  //     // 		    .var(nodeIdVar, nodeIdVar)
+  //     // 		    .var(nodeVar, nodeVar)
+  //     // 		    .var(newNodeVar, newNodeVar),
+  //     // 		    Block
+  //     // 	    .ifTrue(new Expr(Ops.EQUAL, nodeIsRootVar, true),
+  //     // 		    Block
+  //     // 		    .each(Ops.IDENTITY, nodeVar).out(outVar)
+  //     // 		    .emitLoop(outVar),
+
+  //     // Block
+
+  //     // AT3. [Adjust covering rectangle in parent entry.]
+  //     .each(Node::isRoot, nodeVar).out(nodeIsRootVar)
+  //     // .each(Ops.LOG_ERROR, logger, "adjustTree newNode", newNodeVar)
+  //     .each(Ops.PRINTLN, "adjustTree newNode", newNodeVar)
+  //     .ifTrue(new Expr(Ops.AND,
+  //                      new Expr(Ops.IS_NOT_NULL, newNodeVar),
+  //                      new Expr(Ops.EQUAL, nodeIsRootVar, true)),
+  //             Block
+  //             .macro(idGenerator.genId(newParentIdVar))
+  //             .each(RTree::createNonLeafNode,
+  //                   this,
+  //                   newParentIdVar,
+  //                   nodeVar,
+  //                   newNodeVar).out(newParentVar),
+
+  //             // Let P be the parent node of N
+  //             Block
+  //             .each(Node::parentId, nodeVar).out(parentIdVar)
+  //             // .select(objectsPstate, Path.key(parentIdVar)).out(parentVar)
+  //             // .each(RTree<T>::isFull, this, parentVar).out(isParentFullVar)
+
+  //             // and let EN be N's entry in
+  //             // P.  Adjust En.I so that it tightly encloses all entry
+  //             // rectangles in N.
+  //             .each(Node::updateChild, parentVar, nodeVar)
+
+  //             // AT4. [Propagate node split upward.]
+  //             // If N has a partner NN resulting from an earlier split,
+  //             // create a new entry ENN with ENN.p pointing to NN and Em
+  //             // .I enclosing all rectangles in NN. Add Enn to P if there
+  //             // is room Otherwise, invoke SplitNode to produce P and PP
+  //             // containing Em and all P’s old entries.
+  //             // .each(Ops.IDENTITY, null).out(newNodeVar)
+  //             .ifTrue(new Expr(Ops.IS_NOT_NULL, newNodeVar),
+  //                     Block
+  //                     .each(Node::bounds, newNodeVar).out(newNodeBoundsVar)
+  //                     .each(Node::nodeId, newNodeVar).out(newNodeIdVar)
+  //                     .macro(insertInNode(newNodeVar, newNodeBoundsVar, newNodeIdVar, newParentVar))
+  //                     // Block
+  //                     // .each(RTree<T>::isFull, this, parentVar).out(isParentFullVar)
+  //                     // .ifTrue(new Expr(Ops.EQUAL, isParentFullVar, true),
+  //                     // 	    Block
+  //                     // 	    .macro(splitNode(parentVar, isParentFullVar, newParentsVar))
+  //                     // 	    .each(Ops.EXPAND, newParentsVar).out(parentVar, newNodeVar)
+  //                     // 	    .each(Node::nodeId, parentVar).out(parentIdVar))
+  //                     )
+  //             // AT5. [Move up to next level.] Set N=P and set NN-PP if a
+  //             // split occurred. Repeat from AT2.
+  //             // .ifTrue(new Expr(Ops.EQUAL, parentIdVar, nodeIdVar),
+  //             // 	    Block.emitLoop(),
+  //             // 	    Block.continueLoop(parentIdVar, parentVar, newNodeVar))))
+  //             );
+  // }
+
+  // /** Insert entry or child into node.
+  //  */
+  // private Block insertInNode(final String nodeVar,
+  //                            final String boundsVar,
+  //                            /* This can be object or child node id */
+  //                            final String idVar,
+  //                            /* this is the output, a new sibling node */
+  //                            final String newSiblingNodeVar) {
+  //   final String leafNodeIsRootVar = Helpers.genVar("leafNodeIsRoot");
+  //   final String isFullVar = Helpers.genVar("isFull");
+  //   final String nodeIdVar = Helpers.genVar("nodeId");
+
+  //   return Block
+  //     .each(Ops.PRINTLN, "insertInNode", nodeVar, boundsVar, idVar)
+
+  //     // 12. [Add record to node.]
+  //     .each(RTree::isFull, this, nodeVar).out(isFullVar)
+  //     .each(Ops.PRINTLN, "insertInNode isFull", isFullVar)
+
+  //     // If L doesn't has room for another entry
+  //     .ifTrue(isFullVar,
+  //             // invoke splitNode to obtain L and LL containing E and all the
+  //             // old entries of L.
+  //             Block
+  //             .macro(splitNode(nodeVar, newSiblingNodeVar))
+  //             ,
+  //             // install E in L
+  //             Block
+  //             .each(Ops.IDENTITY, Arrays.asList()).out(newSiblingNodeVar))
+
+  //     .each(Node::nodeId, nodeVar).out(nodeIdVar)
+  //     // split could go async, so may need batch blocks and a depot for updates
+  //     .each(Node::add, nodeVar, boundsVar, idVar)
+  //     .each(Ops.PRINTLN, "insertInNode after add", nodeVar)
+  //     .each(Node::isRoot, nodeVar).out(leafNodeIsRootVar)
+  //     .ifTrue(leafNodeIsRootVar,
+  //             Block.localTransform(rootPstate, Path.termVal(nodeVar)),
+  //             Block.localTransform(nodesPstate,
+  //                                  Path.key(nodeIdVar).termVal(nodeVar)))
+  //     .each(Ops.PRINTLN, "insertInNode done");
+  // }
+
+  // /** Perform an insert, creating a new node if needed and updating the parent.
+  //     If new node is created, insert the created node into the parent and
+  //     repeat.
+  //  */
+  // private Block insertLoop(final String nodeVar,
+  //                          final String childBoundsVar,
+  //                          /* This can be object or child node id */
+  //                          final String childIdVar,
+  //                          /* this is the output, the new parent node */
+  //                          final String parentNodeVar) {
+  //   final String newSiblingVar = Helpers.genVar("newSibling");
+  //   final String newSiblingBoundsVar = Helpers.genVar("newSiblingBounds");
+  //   final String newSiblingIdVar = Helpers.genVar("newSiblingId");
+
+  //   return Block
+  //     .loopWithVars(LoopVars
+  //                   .var(nodeVar, nodeVar) // node to insert into
+  //                   .var(childBoundsVar, childBoundsVar)
+  //                   .var(childIdVar, childIdVar),
+  //                   Block
+  //                   .macro(insertInNode(nodeVar,
+  //                                       childBoundsVar,
+  //                                       childIdVar,
+  //                                       newSiblingVar))
+  //                   .each(Ops.PRINTLN,
+  //                         "insertLoop, newSiblingVar",
+  //                         newSiblingVar)
+
+  //                   // 13. [Propagate changes upward.] Invoke AdjustTree on L,
+  //                   // also passing LL if a split was performed.
+  //                   .macro(adjustTree(nodeVar, newSiblingVar, parentNodeVar))
+
+  //                   .ifTrue(new Expr(Ops.IS_NULL, newSiblingVar),
+  //                           Block.emitLoop(nodeVar),
+  //                           Block
+  //                           .each(Node::nodeId, newSiblingVar).out(newSiblingIdVar)
+  //                           .each(Node::bounds, newSiblingVar).out(newSiblingBoundsVar)
+  //                           .continueLoop(parentNodeVar, newSiblingBoundsVar, newSiblingIdVar)))
+  //     ;
+  // }
+
+
+  /** Write the root node value to all partitions */
+  private Block broadcastRootNodeValue(final String rootNodeVar) {
     return Block
-      .each(Ops.PRINTLN, "adjustTree")
-      // .each(Ops.LOG_ERROR, logger, "adjustTree")
-      /* .each(Ops.EXPAND, newNodesVar).out(nodeVar, newNodeVar) */
-      .each(Node::nodeId, nodeVar).out(nodeIdVar)
-      // AT2. [Check if done.] If N is the root, stop.
-      // .loopWithVars(LoopVars
-      // 		    .var(nodeIdVar, nodeIdVar)
-      // 		    .var(nodeVar, nodeVar)
-      // 		    .var(newNodeVar, newNodeVar),
-      // 		    Block
-      // 	    .ifTrue(new Expr(Ops.EQUAL, nodeIsRootVar, true),
-      // 		    Block
-      // 		    .each(Ops.IDENTITY, nodeVar).out(outVar)
-      // 		    .emitLoop(outVar),
-
-      // Block
-
-      // AT3. [Adjust covering rectangle in parent entry.]
-      .each(Node::isRoot, nodeVar).out(nodeIsRootVar)
-      // .each(Ops.LOG_ERROR, logger, "adjustTree newNode", newNodeVar)
-      .each(Ops.PRINTLN, "adjustTree newNode", newNodeVar)
-      .ifTrue(new Expr(Ops.AND,
-                       new Expr(Ops.IS_NOT_NULL, newNodeVar),
-                       new Expr(Ops.EQUAL, nodeIsRootVar, true)),
-              Block
-              .macro(idGenerator.genId(newParentIdVar))
-              .each(RTree::createNonLeafNode,
-                    this,
-                    newParentIdVar,
-                    nodeVar,
-                    newNodeVar).out(newParentVar),
-
-              // Let P be the parent node of N
-              Block
-              .each(Node::parentId, nodeVar).out(parentIdVar)
-              // .select(objectsPstate, Path.key(parentIdVar)).out(parentVar)
-              // .each(RTree<T>::isFull, this, parentVar).out(isParentFullVar)
-
-              // and let EN be N's entry in
-              // P.  Adjust En.I so that it tightly encloses all entry
-              // rectangles in N.
-              .each(Node::updateChild, parentVar, nodeVar)
-
-              // AT4. [Propagate node split upward.]
-              // If N has a partner NN resulting from an earlier split,
-              // create a new entry ENN with ENN.p pointing to NN and Em
-              // .I enclosing all rectangles in NN. Add Enn to P if there
-              // is room Otherwise, invoke SplitNode to produce P and PP
-              // containing Em and all P’s old entries.
-              // .each(Ops.IDENTITY, null).out(newNodeVar)
-              .ifTrue(new Expr(Ops.IS_NOT_NULL, newNodeVar),
-                      Block
-                      .each(Node::bounds, newNodeVar).out(newNodeBoundsVar)
-                      .each(Node::nodeId, newNodeVar).out(newNodeIdVar)
-                      .macro(insertInNode(newNodeVar, newNodeBoundsVar, newNodeIdVar, newParentVar))
-                      // Block
-                      // .each(RTree<T>::isFull, this, parentVar).out(isParentFullVar)
-                      // .ifTrue(new Expr(Ops.EQUAL, isParentFullVar, true),
-                      // 	    Block
-                      // 	    .macro(splitNode(parentVar, isParentFullVar, newParentsVar))
-                      // 	    .each(Ops.EXPAND, newParentsVar).out(parentVar, newNodeVar)
-                      // 	    .each(Node::nodeId, parentVar).out(parentIdVar))
-                      )
-              // AT5. [Move up to next level.] Set N=P and set NN-PP if a
-              // split occurred. Repeat from AT2.
-              // .ifTrue(new Expr(Ops.EQUAL, parentIdVar, nodeIdVar),
-              // 	    Block.emitLoop(),
-              // 	    Block.continueLoop(parentIdVar, parentVar, newNodeVar))))
-              );
-  }
-
-  /** Insert entry or child into node.
-   */
-  private Block insertInNode(final String nodeVar,
-                             final String boundsVar,
-                             /* This can be object or child node id */
-                             final String idVar,
-                             /* this is the output, a new sibling node */
-                             final String newSiblingNodeVar) {
-    final String leafNodeIsRootVar = Helpers.genVar("leafNodeIsRoot");
-    final String isFullVar = Helpers.genVar("isFull");
-    final String nodeIdVar = Helpers.genVar("nodeId");
-
-    return Block
-      .each(Ops.PRINTLN, "insertInNode", nodeVar, boundsVar, idVar)
-
-      // 12. [Add record to node.]
-      .each(RTree::isFull, this, nodeVar).out(isFullVar)
-      .each(Ops.PRINTLN, "insertInNode isFull", isFullVar)
-
-      // If L doesn't has room for another entry
-      .ifTrue(isFullVar,
-              // invoke splitNode to obtain L and LL containing E and all the
-              // old entries of L.
-              Block
-              .macro(splitNode(nodeVar, newSiblingNodeVar))
-              ,
-              // install E in L
-              Block
-              .each(Ops.IDENTITY, Arrays.asList()).out(newSiblingNodeVar))
-
-      .each(Node::nodeId, nodeVar).out(nodeIdVar)
-      // split could go async, so may need batch blocks and a depot for updates
-      .each(Node::add, nodeVar, boundsVar, idVar)
-      .each(Ops.PRINTLN, "insertInNode after add", nodeVar)
-      .each(Node::isRoot, nodeVar).out(leafNodeIsRootVar)
-      .ifTrue(leafNodeIsRootVar,
-              Block.localTransform(rootPstate, Path.termVal(nodeVar)),
-              Block.localTransform(nodesPstate,
-                                   Path.key(nodeIdVar).termVal(nodeVar)))
-      .each(Ops.PRINTLN, "insertInNode done");
-  }
-
-  /** Perform an insert, creating a new node if needed and updating the parent.
-      If new node is created, insert the created node into the parent and
-      repeat.
-   */
-  private Block insertLoop(final String nodeVar,
-                           final String childBoundsVar,
-                           /* This can be object or child node id */
-                           final String childIdVar,
-                           /* this is the output, the new parent node */
-                           final String parentNodeVar) {
-    final String newSiblingVar = Helpers.genVar("newSibling");
-    final String newSiblingBoundsVar = Helpers.genVar("newSiblingBounds");
-    final String newSiblingIdVar = Helpers.genVar("newSiblingId");
-
-    return Block
-      .loopWithVars(LoopVars
-                    .var(nodeVar, nodeVar) // node to insert into
-                    .var(childBoundsVar, childBoundsVar)
-                    .var(childIdVar, childIdVar),
-                    Block
-                    .macro(insertInNode(nodeVar,
-                                        childBoundsVar,
-                                        childIdVar,
-                                        newSiblingVar))
-                    .each(Ops.PRINTLN,
-                          "insertLoop, newSiblingVar",
-                          newSiblingVar)
-
-                    // 13. [Propagate changes upward.] Invoke AdjustTree on L,
-                    // also passing LL if a split was performed.
-                    .macro(adjustTree(nodeVar, newSiblingVar, parentNodeVar))
-
-                    .ifTrue(new Expr(Ops.IS_NULL, newSiblingVar),
-                            Block.emitLoop(nodeVar),
-                            Block
-                            .each(Node::nodeId, newSiblingVar).out(newSiblingIdVar)
-                            .each(Node::bounds, newSiblingVar).out(newSiblingBoundsVar)
-                            .continueLoop(parentNodeVar, newSiblingBoundsVar, newSiblingIdVar)))
-      ;
+        .batchBlock(
+          Block
+          .allPartition()
+          .localTransform(rootPstate, Path.termVal(rootNodeVar)));
   }
 
   private LeafNode constructRoot(long id) {
       return new LeafNode(id, id);
   }
 
+  /** Set rootNodeVar to be the local copy of the root node.
+      If the root node does not exist it is created.
+   */
   private Block rootNode(final String rootNodeVar) {
     final String currentRootNodeVar = Helpers.genVar("rootNode");
     final String rootNodeIdVar = Helpers.genVar("rootNodeId");
@@ -335,70 +348,70 @@ public class RTree implements RamaSerializable {
               .each(Ops.PRINTLN, "Creating root node")
               .macro(idGenerator.genId(rootNodeIdVar))
               .each(RTree::constructRoot, this, rootNodeIdVar).out(rootNodeVar)
-              .localTransform(rootPstate, Path.termVal(rootNodeVar)),
+              .macro(broadcastRootNodeValue(rootNodeVar)),
               Block
-              .each(Ops.PRINTLN, "root node already exists")
+              .each(Ops.PRINTLN, "Root node already exists")
               .each(Ops.IDENTITY, currentRootNodeVar).out(rootNodeVar))
       .each(Ops.PRINTLN, "Root node", rootNodeVar);
   }
 
-  /** Insert a new index entry E */
-  private Block insert(final String boundsVar, final String objectVar) {
-    final String leafNodeVar = Helpers.genVar("leafNode");
-    final String leafNodeIsRootVar = Helpers.genVar("leafNodeIsRoot");
-    final String idVar = Helpers.genVar("id");
-    final String rootNodeVar = Helpers.genVar("rootNode");
-    final String rootNodeIdVar = Helpers.genVar("rootNodeId");
-    final String newRootNodeVar = Helpers.genVar("newRootNode");
-    final String newRootNodeIdVar = Helpers.genVar("newRootNodeId");
+  // /** Insert a new index entry E */
+  // private Block insert(final String boundsVar, final String objectVar) {
+  //   final String leafNodeVar = Helpers.genVar("leafNode");
+  //   final String leafNodeIsRootVar = Helpers.genVar("leafNodeIsRoot");
+  //   final String idVar = Helpers.genVar("id");
+  //   final String rootNodeVar = Helpers.genVar("rootNode");
+  //   final String rootNodeIdVar = Helpers.genVar("rootNodeId");
+  //   final String newRootNodeVar = Helpers.genVar("newRootNode");
+  //   final String newRootNodeIdVar = Helpers.genVar("newRootNodeId");
 
-    return
-      // 11. [Find position for new record.]
-      // Invoke ChooseLeaf to select a leaf node L in which to place E.
-      Block
-      // [Initialize.] Set N to be the root node.
-      .macro(rootNode(rootNodeVar))
-      .each(Node::nodeId, rootNodeVar).out(rootNodeIdVar)
-      .macro(chooseLeaf(rootNodeVar, leafNodeVar, leafNodeIsRootVar))
-      .macro(idGenerator.genId(idVar))
-      // .localTransform(objectsPstate, Path.key(idVar).termVal(objectVar))
-      .macro(insertInNode(leafNodeVar, boundsVar, idVar, newRootNodeVar))
-      // // 12. [Add record to leaf node.]
-      // .each(RTree<T>::isFull, this, leafNodeVar).out(isFullVar)
-      // // If L doesn't has room for another entry
-      // .ifTrue(isFullVar,
-      // 	      // invoke splitNode to obtain L and LL containing E and all the
-      // 	      // old entries of L.
-      // 	      Block
-      // 	      .macro(splitNode(leafNodeVar, leafNodeIsRootVar, newNodesVar))
-      // 	      .each(Ops.EXPLODE, newNodesVar).out(newNodeVar)
-      // 	      .each(Node::nodeId, newNodeVar).out(newNodeIdVar)
-      // 	      .localTransform(nodesPstate, Path.key(newNodeIdVar).termVal(newNodeVar))
-      // 	      ,
-      // 	      // install E in L
-      // 	      Block
-      // 	      .macro(nodeId.genId(idGeneratorVar))
-      // 	      .each(Node::nodeId, leafNodeVar).out(nodeIdVar)
-      // 	      .each(Node::add, leafNodeVar, boundsVar, idGeneratorVar).out(leafNodeVar)
-      // 	      .each(Ops.IDENTITY, null).out(newNodeVar)
-      // 	      .localTransform(objectsPstate, Path.key(idGeneratorVar).termVal(objectVar))
-      // 	      .ifTrue(leafNodeIsRootVar,
-      // 		      Block.localTransform(rootPstate, Path.termVal(leafNodeVar)),
-      // 		      Block.localTransform(nodesPstate,
-      // 					   Path.key(nodeIdVar).termVal(leafNodeVar)))
-      // 	      .each(Ops.TUPLE, leafNodeVar).out(newNodesVar))
+  //   return
+  //     // 11. [Find position for new record.]
+  //     // Invoke ChooseLeaf to select a leaf node L in which to place E.
+  //     Block
+  //     // [Initialize.] Set N to be the root node.
+  //     .macro(rootNode(rootNodeVar))
+  //     .each(Node::nodeId, rootNodeVar).out(rootNodeIdVar)
+  //     .macro(chooseLeaf(rootNodeVar, leafNodeVar, leafNodeIsRootVar))
+  //     .macro(idGenerator.genId(idVar))
+  //     // .localTransform(objectsPstate, Path.key(idVar).termVal(objectVar))
+  //     .macro(insertInNode(leafNodeVar, boundsVar, idVar, newRootNodeVar))
+  //     // // 12. [Add record to leaf node.]
+  //     // .each(RTree<T>::isFull, this, leafNodeVar).out(isFullVar)
+  //     // // If L doesn't has room for another entry
+  //     // .ifTrue(isFullVar,
+  //     // 	      // invoke splitNode to obtain L and LL containing E and all the
+  //     // 	      // old entries of L.
+  //     // 	      Block
+  //     // 	      .macro(splitNode(leafNodeVar, leafNodeIsRootVar, newNodesVar))
+  //     // 	      .each(Ops.EXPLODE, newNodesVar).out(newNodeVar)
+  //     // 	      .each(Node::nodeId, newNodeVar).out(newNodeIdVar)
+  //     // 	      .localTransform(nodesPstate, Path.key(newNodeIdVar).termVal(newNodeVar))
+  //     // 	      ,
+  //     // 	      // install E in L
+  //     // 	      Block
+  //     // 	      .macro(nodeId.genId(idGeneratorVar))
+  //     // 	      .each(Node::nodeId, leafNodeVar).out(nodeIdVar)
+  //     // 	      .each(Node::add, leafNodeVar, boundsVar, idGeneratorVar).out(leafNodeVar)
+  //     // 	      .each(Ops.IDENTITY, null).out(newNodeVar)
+  //     // 	      .localTransform(objectsPstate, Path.key(idGeneratorVar).termVal(objectVar))
+  //     // 	      .ifTrue(leafNodeIsRootVar,
+  //     // 		      Block.localTransform(rootPstate, Path.termVal(leafNodeVar)),
+  //     // 		      Block.localTransform(nodesPstate,
+  //     // 					   Path.key(nodeIdVar).termVal(leafNodeVar)))
+  //     // 	      .each(Ops.TUPLE, leafNodeVar).out(newNodesVar))
 
-      // // 13. [Propagate changes upward.] Invoke AdjustTree on L, also passing LL
-      // // if a split was performed.
-      // .macro(adjustTree(newNodesVar, nodeIsRootVar, needsNewRootVar, rootNodeVar))
+  //     // // 13. [Propagate changes upward.] Invoke AdjustTree on L, also passing LL
+  //     // // if a split was performed.
+  //     // .macro(adjustTree(newNodesVar, nodeIsRootVar, needsNewRootVar, rootNodeVar))
 
-    // 14. [Grow tree taller.] If node split propagation caused the root to
-    // split, create a new root whose children are the two resulting nodes.
-      .each(Node::nodeId, newRootNodeVar).out(newRootNodeIdVar)
-      .ifTrue(new Expr(Ops.NOT_EQUAL, rootNodeIdVar, newRootNodeIdVar),
-              Block
-              .localTransform(rootPstate, Path.stay().termVal(newRootNodeVar)));
-  }
+  //   // 14. [Grow tree taller.] If node split propagation caused the root to
+  //   // split, create a new root whose children are the two resulting nodes.
+  //     .each(Node::nodeId, newRootNodeVar).out(newRootNodeIdVar)
+  //     .ifTrue(new Expr(Ops.NOT_EQUAL, rootNodeIdVar, newRootNodeIdVar),
+  //             Block
+  //             .localTransform(rootPstate, Path.stay().termVal(newRootNodeVar)));
+  // }
 
   /** Perform all operations from nodeOpsVar on nodeVar.
 
@@ -579,20 +592,6 @@ public class RTree implements RamaSerializable {
     public void invoke(T data, RTreeCollector collector);
   }
 
-  // public <T> Block handleModifications(final String microbatchVar,
-  //                                      final RTreeConvertorFunction<T> dataConvertor) {
-  //   final String dataVar = Helpers.genVar("*data");
-  //   final String modificationVar = Helpers.genVar("*modification");
-  //   return Block
-  //     .batchBlock(Block
-  //                 .explodeMicrobatch(microbatchVar).out(dataVar)
-  //                 .each((T data, OutputCollector collector) -> {
-  //                     RTreeCollector c = new RTreeCollector(collector);
-  //                     dataConvertor.invoke(data, c);
-  //                   },
-  //                   dataVar).out(modificationVar)
-  //                 .agg(Agg.list(modificationVar)).out("$$p"));}
-
   /* Explode the contents of var.
      Var can refer to a microbatch, or a temporary pstate.
   */
@@ -672,9 +671,11 @@ public class RTree implements RamaSerializable {
             .each(Ops.PRINTLN, "maxSize", "*maxSize")
             .ifTrue(
               new Expr(Ops.EQUAL, 0, "*maxSize"),
+              // Nothing left to do
               Block
-              .each(Ops.PRINTLN, "Loop emitting")
+              .each(Ops.PRINTLN, "Operations loop complete, emitting")
               .emitLoop(),
+              // Perform changes to next node
               Block
               .batchBlock(
                 Block
@@ -690,6 +691,7 @@ public class RTree implements RamaSerializable {
                 .each(List<Object>::size,"*newSiblings").out("*numSiblings")
                 .each(Node::isRoot, nodeVar).out("*isRoot")
                 .ifTrue(new Expr(Ops.EQUAL, 0, "*numSiblings"),
+                        // No splits creating new siblings
                         Block
                         .each(Ops.PRINTLN,"no new siblings")
                         .ifTrue(new Expr(Ops.IDENTITY, "*isRoot"),
@@ -705,10 +707,11 @@ public class RTree implements RamaSerializable {
                         .each(Ops.IDENTITY, null).out("*newOp")
                         .each(Node::parentId, nodeVar).out("*parentId")
                         .each(Ops.IDENTITY, nodeVar).out("*parent"),
+                        // Have splits creating new siblings
                         Block
                         .ifTrue(new Expr(Ops.IDENTITY, "*isRoot"),
-                                // new siblings and the node was root - we need
-                                // a new root node.
+                                // the original node was root - we need a new
+                                // root node.
                                 Block
                                 .each(Ops.PRINTLN, "node was root")
                                 .each(Node::nodeId, nodeVar).out("*nodeId")
@@ -720,20 +723,20 @@ public class RTree implements RamaSerializable {
                                       "*parent",
                                       "*nodeBounds",
                                       "*nodeId")
+                                .hashPartition("*parentId")
                                 .localTransform(rootPstate,
                                                 Path.termVal("*parent"))
                                 .each(Node::setParentId,
                                       nodeVar, "*parentId")
+                                .hashPartition("*nodeId")
                                 .localTransform(nodesPstate,
                                                 Path
                                                 .key("*nodeId")
-                                                .termVal(nodeVar))
-                                .localTransform(nodesPstate,
-                                                Path
-                                                .key("*parentId")
-                                                .termVal("*parent")),
+                                                .termVal(nodeVar)),
+                                // the original node was not root
                                 Block
                                 .each(Node::nodeId, nodeVar).out("*nodeId")
+                                .hashPartition("*nodeId")
                                 .localTransform(nodesPstate,
                                                 Path
                                                 .key("*nodeId")
@@ -748,6 +751,7 @@ public class RTree implements RamaSerializable {
                       "*newBounds",
                       "*newId").out("*newOp")
                 .each(Ops.PRINTLN, "Saving sibling", "*newId", "*newSibling")
+                .hashPartition("*newId")
                 .localTransform(nodesPstate,
                                 Path.key("*newId").termVal("*newSibling"))
                 .each(Ops.PRINTLN,"parent node id", "*parent")
@@ -769,8 +773,7 @@ public class RTree implements RamaSerializable {
           Block
           .each(Ops.PRINTLN, "Updating global partitions")
           .macro(rootNode("*rootNode"))
-          .allPartition()
-          .localTransform(rootPstate, Path.termVal("*rootNode")))
+          .macro(broadcastRootNodeValue("*rootNode")))
         ;}
 
   private void declareQueries(final Topologies topologies) {

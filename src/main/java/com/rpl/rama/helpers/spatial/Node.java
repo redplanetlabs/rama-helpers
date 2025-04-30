@@ -48,6 +48,8 @@ public abstract class Node implements INode, RamaSerializable {
   }
 
   public Node add(MBR bounds, long id) {
+    System.out.println(
+      "Node::add "+ this + "  bounds: "+ bounds + ",  id: " + id);
     children.add(new Child(bounds, id));
     return this;
   }
