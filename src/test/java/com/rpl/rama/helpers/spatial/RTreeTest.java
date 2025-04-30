@@ -18,6 +18,7 @@ import com.rpl.rama.ops.Ops;
 import com.rpl.rama.test.InProcessCluster;
 import com.rpl.rama.test.LaunchConfig;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -194,7 +195,7 @@ public class RTreeTest {
         {
           final Object[] children
               = node.children.stream().map(Child::childId).toArray();
-          assertEquals(new Object[] { 0L, 1L }, children);
+          assertArrayEquals(new Object[] { 0L, 1L }, children);
         }
 
         assertEquals(0, node0.nodeId());
@@ -204,7 +205,7 @@ public class RTreeTest {
         {
           final Object[] children
               = node0.children.stream().map(Child::childId).toArray();
-          assertEquals(new Object[] { 0L, 1L }, children);
+          assertArrayEquals(new Object[] { 0L, 1L }, children);
         }
 
         assertEquals(1, node1.nodeId());
@@ -214,7 +215,7 @@ public class RTreeTest {
         {
           final Object[] children
               = node1.children.stream().map(Child::childId).toArray();
-          assertEquals(new Object[] { 2L }, children);
+          assertArrayEquals(new Object[] { 2L }, children);
         }
 
         System.out.println("DDD");
