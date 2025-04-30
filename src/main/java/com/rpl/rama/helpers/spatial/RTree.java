@@ -548,39 +548,23 @@ public class RTree implements RamaSerializable {
                   // determine whether E.I overlaps S. For all overlapping entries, invoke
                   // Search on the tree whose root node is pointed to by E.p .
                   Block
-                  .each(Node::overlapping, rootVar, boundsVar).out("*childIds")
+                  .each(Node::overlapping, "*node", boundsVar).out("*childIds")
                   .each(Ops.PRINTLN, "Child ids", "*childIds")
-                  .loopWithVars(
-                    LoopVars.var("*ids", "*childIds"),
-                    Block
-                    .each(Ops.PRINTLN, "Loop body", "*ids")
-                    .each(List<Long>::isEmpty, "*childIds").out("*isEmpty")
-                    .each(Ops.PRINTLN, "Loop done?", "*isEmpty")
-                    .ifTrue(
-                      new Expr(Ops.NOT, new Expr(Ops.IDENTITY, "*isEmpty")),
-                      Block
-                      .each(List<Long>::get, "*ids", 0).out("*childId")
-                      .localSelect(nodesPstate,
-                                   Path.key("*childId")).out("*childNode")
-                      .each(Ops.PRINTLN, "Child id", "*childId", "*childNode")
-                      .emitLoop("*childNode")
-                      .each((List<Long> ids) -> {
-                            ids.remove(0);
-                            return ids;
-                      },
-                        "*childIds").out("*remainingIds")
-                      .each(Ops.PRINTLN, "continue child loop", "*remainingIds")
-                      .continueLoop("*remainingIds")
-                                )).out("*child")
+                  .each(Ops.EXPLODE, "*childIds").out("*childId")
+                  .hashPartition("*childId")
+                  .localSelect(nodesPstate,
+                               Path.key("*childId")).out("*child")
+                  .each(Ops.PRINTLN, "Child id", "*childId", "*child")
+                  .each(Ops.PRINTLN, "emitting from inner loop")
                   .each(Ops.PRINTLN, "Continue outer loop", "*child")
                   .continueLoop("*child"),
 
                   // S2. [Search leaf node.] If T is a leaf, check all entries E to
                   // determine whether E.I overlaps S. If so, E is a qualifying record.
                   Block
-                  .each(Ops.PRINTLN, "Single node")
-                  .each(Node::overlapping, rootVar, boundsVar).out("*ids")
-                  .each(Ops.PRINTLN, "Matching", "*ids")
+                  .each(Ops.PRINTLN, "Single leaf node")
+                  .each(Node::overlapping, "*node", boundsVar).out("*ids")
+                  .each(Ops.PRINTLN, "Matching objects", "*ids")
                   .each(Ops.EXPLODE, "*ids").out("*id")
                   .emitLoop("*id")))
         .out(outVar);
@@ -759,9 +743,11 @@ public class RTree implements RamaSerializable {
                 .each(Ops.EXPLODE, "*newSiblings").out("*newSibling")
                 .each(Node::bounds, "*newSibling").out("*newBounds")
                 .each(Node::nodeId, "*newSibling").out("*newId")
+                .each(Node::setParentId, "*newSibling", "*parentId")
                 .each(RTreeCollector.AddObject::mkAddObject,
                       "*newBounds",
                       "*newId").out("*newOp")
+                .each(Ops.PRINTLN, "Saving sibling", "*newId", "*newSibling")
                 .localTransform(nodesPstate,
                                 Path.key("*newId").termVal("*newSibling"))
                 .each(Ops.PRINTLN,"parent node id", "*parent")

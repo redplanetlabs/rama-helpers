@@ -10,6 +10,11 @@ public class NonLeafNode extends Node {
     super(id, parent);
   }
 
+  @Override
+  public String toString() {
+    return "NonLeaf" + super.toString();
+  }
+
   public boolean isLeaf() {
     return false;
   }

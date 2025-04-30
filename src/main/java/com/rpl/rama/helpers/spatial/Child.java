@@ -15,4 +15,8 @@ public final class Child implements RamaSerializable {
   public String toString() {
     return "Child [bounds=" + bounds + ", id=" + id + "]";
   }
+
+  long childId() {
+    return id;
+  }
 }

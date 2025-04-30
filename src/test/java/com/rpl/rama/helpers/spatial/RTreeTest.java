@@ -175,9 +175,12 @@ public class RTreeTest {
         DepotPartitionInfo dpi = depot.getPartitionInfo(0);
         assertEquals(3, dpi.getEndOffset());
 
+        System.out.println("AAAA");
         final Node node = root.selectOne(Path.stay());
-        final Node node0 = nodes.selectOne(Path.key(0));
-        final Node node1 = nodes.selectOne(Path.key(1));
+        System.out.println("BBB");
+        final Node node0 = nodes.selectOne(Path.key(0L));
+        System.out.println("CCC");
+        final Node node1 = nodes.selectOne(Path.key(1L));
 
         System.out.println("Root node after processing " + node);
         System.out.println("Node 0 after processing " + node0);
@@ -188,21 +191,36 @@ public class RTreeTest {
         assertEquals(2, node.nodeId());
         assertEquals(2, node.parentId());
         assertEquals(2, node.count()); // 0, 1
-        // assertEquals(2, node.children);
+        {
+          final Object[] children
+              = node.children.stream().map(Child::childId).toArray();
+          assertEquals(new Object[] { 0L, 1L }, children);
+        }
 
         assertEquals(0, node0.nodeId());
         assertEquals(2, node0.parentId());
+        assertTrue(node0.isLeaf());
         assertEquals(2, node0.count()); // object 0,1
-        // assertEquals(2, node0.children);
+        {
+          final Object[] children
+              = node0.children.stream().map(Child::childId).toArray();
+          assertEquals(new Object[] { 0L, 1L }, children);
+        }
 
         assertEquals(1, node1.nodeId());
         assertEquals(2, node1.parentId());
+        assertTrue(node0.isLeaf());
         assertEquals(1, node1.count()); // object 2
-        // assertEquals(1, node1.children);
+        {
+          final Object[] children
+              = node1.children.stream().map(Child::childId).toArray();
+          assertEquals(new Object[] { 2L }, children);
+        }
 
+        System.out.println("DDD");
         assertEquals(new ArrayList<>(Arrays.asList(0L, 1L, 2L)),
                      new ArrayList<>((List<Long>)q.invoke(oneBounds)));
-        assertEquals(new ArrayList<>(Arrays.asList(0, 1L, 2L)),
+        assertEquals(new ArrayList<>(Arrays.asList(0L, 1L, 2L)),
                      new ArrayList<>((List<Long>)q.invoke(twoBounds)));
         assertEquals(new ArrayList<>(Arrays.asList()),
                      new ArrayList<>((List<Long>)q.invoke(twoHundredBounds)));

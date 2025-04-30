@@ -12,6 +12,11 @@ public class LeafNode extends Node {
     /* this.objects = new ArrayList<>(); */
   }
 
+  @Override
+  public String toString() {
+    return "Leaf" + super.toString();
+  }
+
   /* public LeafNode(long id, long parent, Child child) { */
   /*   this.id = id; */
   /*   this.parent = parent; */

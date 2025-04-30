@@ -1,6 +1,8 @@
 package com.rpl.rama.helpers.spatial;
 
 import com.rpl.rama.Block;
+import com.rpl.rama.Expr;
+import com.rpl.rama.LoopVars;
 import com.rpl.rama.PState;
 import com.rpl.rama.Path;
 import com.rpl.rama.helpers.ModuleUniqueIdPState;
@@ -16,6 +18,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -151,6 +154,29 @@ public class RTreeUnitTest {
       assertEquals(5, node.get().children.get(0).id);
       assertEquals(4, node.get().children.get(1).id);
     }
+  }
+
+  @Test
+  public void nestedLoopTest() throws Exception {
+    Block
+        .loopWithVars(
+          LoopVars.var("*outer", 3),
+          Block
+          .loopWithVars(
+            LoopVars.var("*inner", 3),
+            Block
+            .each(Ops.PRINTLN, "inner", "*inner")
+            .ifTrue(
+              new Expr(Ops.EQUAL, 0, "*inner"),
+              Block.emitLoop(),
+              Block.continueLoop(new Expr(Ops.DEC, "*inner"))))
+          .each(Ops.PRINTLN, "outer", "*outer")
+          .emitLoop()
+          .ifTrue(
+            new Expr(Ops.EQUAL, 0, "*outer"),
+            Block.emitLoop(),
+            Block.continueLoop(new Expr(Ops.DEC, "*outer"))))
+        .execute();
   }
 
   @Test
