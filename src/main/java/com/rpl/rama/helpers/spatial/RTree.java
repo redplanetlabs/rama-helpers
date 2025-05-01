@@ -14,22 +14,23 @@ import com.rpl.rama.Path;
 import com.rpl.rama.RamaSerializable;
 import com.rpl.rama.RamaModule.Topologies;
 import com.rpl.rama.helpers.ModuleUniqueIdPState;
+import com.rpl.rama.helpers.RamaAssert;
 import com.rpl.rama.module.MicrobatchTopology;
 import com.rpl.rama.ops.Ops;
 import com.rpl.rama.ops.OutputCollector;
 import com.rpl.rama.ops.RamaFunction1;
 import com.rpl.rama.ops.RamaFunction2;
 import com.rpl.rama.ops.RamaFunction3;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import static com.rpl.rama.helpers.TopologyUtils.extractJavaFields;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
-
-import clojure.lang.IPersistentVector;
 import rpl.rama.java_api.integration__init;
 
 public class RTree implements RamaSerializable {
@@ -51,8 +52,8 @@ public class RTree implements RamaSerializable {
     }
   }
 
-   // Create a logger instance
-  // private final Logger logger = LogManager.getLogger(RTree.class);
+  // Create a logger instance
+  private final Logger LOGGER = LoggerFactory.getLogger(RTree.class);
 
   public RTree(final int dimensions,
                final int M,
@@ -108,8 +109,10 @@ public class RTree implements RamaSerializable {
     // choosing the entry with the rectangle of smallest area
               Block
               .each(Ops.IDENTITY, false).out(leafNodeIsRootVar)
-              // TODO
-              .each(Ops.IDENTITY, null).out(leafNodeVar));
+	      .each(Node::chooseLeaf, rootNodeVar, boundsVar).out("*childId")
+	      .each(Ops.PRINTLN, "Choosen leaf childId:", "*childId")
+	      .macro(readNode("*childId", leafNodeVar))
+	      .each(Ops.PRINTLN, "Choosen leaf:", leafNodeVar));
     // CL4. [Descend until a leaf is reached.] Set N to be the child node
     // pointed to by F.p and repeat from CL2.
   }
@@ -413,6 +416,20 @@ public class RTree implements RamaSerializable {
   //             .localTransform(rootPstate, Path.stay().termVal(newRootNodeVar)));
   // }
 
+  protected Block readNode(final String nodeIdVar, final String nodeVar) {
+    return Block
+      .each(Ops.PRINTLN, "readNode", nodeIdVar)
+      .hashPartition(nodeIdVar)
+      .localSelect(nodesPstate, Path.key(nodeIdVar)).out(nodeVar);
+  }
+
+  protected Block writeNode(final String nodeIdVar, final String nodeVar) {
+    return Block
+      .each(Ops.PRINTLN, "writeNode", nodeIdVar, nodeVar)
+      .hashPartition(nodeIdVar)
+      .localTransform(nodesPstate, Path.key(nodeIdVar).termVal(nodeVar));
+  }
+
   /** Perform all operations from nodeOpsVar on nodeVar.
 
       This does not persist the updated node, or the new siblings.
@@ -564,9 +581,7 @@ public class RTree implements RamaSerializable {
                   .each(Node::overlapping, "*node", boundsVar).out("*childIds")
                   .each(Ops.PRINTLN, "Child ids", "*childIds")
                   .each(Ops.EXPLODE, "*childIds").out("*childId")
-                  .hashPartition("*childId")
-                  .localSelect(nodesPstate,
-                               Path.key("*childId")).out("*child")
+		  .macro(readNode("*childId", "*child"))
                   .each(Ops.PRINTLN, "Child id", "*childId", "*child")
                   .each(Ops.PRINTLN, "emitting from inner loop")
                   .each(Ops.PRINTLN, "Continue outer loop", "*child")
@@ -625,13 +640,13 @@ public class RTree implements RamaSerializable {
     final String nodeVar = Helpers.genVar("node");
     final String opsVar = Helpers.genVar("ops");
 
-
     // TODO hash by node id to start with.
     // TODO don't need genVar's for names inside a single batch block
     return Block
         // can't have batch block inside batch block.
         .batchBlock(
           Block
+	  .each(Ops.LOG_ERROR,	LOGGER, "handleModifications")
           .macro(rootNode(rootNodeVar))
           .macro(explode(microbatchVar, "*data"))
           .each(Ops.PRINTLN, "DATA", "*data")
@@ -650,9 +665,11 @@ public class RTree implements RamaSerializable {
                             "*bounds",
                             nodeVar,
                             leafNodeIsRootVar))
+	  .macro(RamaAssert.assertMacro((Node v) -> {return v != null; },
+					nodeVar))
           // NOTE assumes chooseLeaf emits on nodeVar's partition
           .directPartition(new Expr(Ops.CURRENT_TASK_ID))
-          .compoundAgg(
+		 .compoundAgg(
             CompoundAgg.map(
               nodeVar,
               Agg.list("*modification"))).out(nodeChangeTableVar))
@@ -661,10 +678,13 @@ public class RTree implements RamaSerializable {
         .loop(
             Block
             .each(Ops.PRINTLN, "loop body start")
+	    .each(Ops.LOG_ERROR, LOGGER, "loop body start")
             .batchBlock(
               Block
               .allPartition()
-              .localSelect(nodeChangeTableVar, Path.view(Ops.SIZE)).out("*size")
+              .localSelect(nodeChangeTableVar, Path.stay()).out("*elems")
+	      .each(Ops.LOG_ERROR, LOGGER, new Expr(Ops.TO_STRING,"elems", " ","*elems"))
+	      .each(Ops.SIZE, "*elems").out("*size")
               .globalPartition()
               .agg(Agg.max("*size")).out("$$maxSize"))
             .localSelect("$$maxSize", Path.stay()).out("*maxSize")
@@ -680,8 +700,11 @@ public class RTree implements RamaSerializable {
               .batchBlock(
                 Block
                 .localSelect(nodeChangeTableVar, Path.all()).out(nodeOpsVar)
+                .each(Ops.PRINTLN, "nodeOpsVar", nodeOpsVar)
                 .each(Ops.FIRST, nodeOpsVar).out(nodeVar)
                 .each(Ops.LAST, nodeOpsVar).out("*nodeOpsList")
+                .each(Ops.PRINTLN, "nodeVar", nodeVar)
+                .each(Ops.PRINTLN, "nodeOpsList", "nodeOpsList")
                 .macro(updateNode(M,
                                   idGenerator,
                                   nodeVar,
@@ -696,14 +719,12 @@ public class RTree implements RamaSerializable {
                         .each(Ops.PRINTLN,"no new siblings")
                         .ifTrue(new Expr(Ops.IDENTITY, "*isRoot"),
                                 Block
+				.hashPartition(new Expr(Ops.CURRENT_TASK_ID))
                                 .localTransform(rootPstate,
                                                 Path.termVal(nodeVar)),
                                 Block
                                 .each(Node::nodeId, nodeVar).out("*nodeId")
-                                .localTransform(nodesPstate,
-                                                Path
-                                                .key("*nodeId")
-                                                .termVal(nodeVar)))
+				.macro(writeNode("*nodeId",nodeVar)))
                         .each(Ops.IDENTITY, null).out("*newOp")
                         .each(Node::parentId, nodeVar).out("*parentId")
                         .each(Ops.IDENTITY, nodeVar).out("*parent"),
@@ -723,24 +744,17 @@ public class RTree implements RamaSerializable {
                                       "*parent",
                                       "*nodeBounds",
                                       "*nodeId")
-                                .hashPartition("*parentId")
+				// TODO is this corrrect?
+				.hashPartition(new Expr(Ops.CURRENT_TASK_ID))
                                 .localTransform(rootPstate,
                                                 Path.termVal("*parent"))
                                 .each(Node::setParentId,
                                       nodeVar, "*parentId")
-                                .hashPartition("*nodeId")
-                                .localTransform(nodesPstate,
-                                                Path
-                                                .key("*nodeId")
-                                                .termVal(nodeVar)),
+                                .macro(writeNode("*nodeId",nodeVar)),
                                 // the original node was not root
                                 Block
                                 .each(Node::nodeId, nodeVar).out("*nodeId")
-                                .hashPartition("*nodeId")
-                                .localTransform(nodesPstate,
-                                                Path
-                                                .key("*nodeId")
-                                                .termVal(nodeVar))
+                                .macro(writeNode("*nodeId", nodeVar))
                                 .each(Node::parentId, nodeVar).out("*parentId")
                                 .each(Ops.IDENTITY,nodeVar).out("*parent")))
                 .each(Ops.EXPLODE, "*newSiblings").out("*newSibling")
@@ -751,10 +765,11 @@ public class RTree implements RamaSerializable {
                       "*newBounds",
                       "*newId").out("*newOp")
                 .each(Ops.PRINTLN, "Saving sibling", "*newId", "*newSibling")
-                .hashPartition("*newId")
-                .localTransform(nodesPstate,
-                                Path.key("*newId").termVal("*newSibling"))
+                .macro(writeNode("*newId", "*newSibling"))
                 .each(Ops.PRINTLN,"parent node id", "*parent")
+		.each(Ops.LOG_ERROR,
+		      LOGGER,
+		      new Expr(Ops.TO_STRING, "parent node id", " ", "*parent"))
                 .hashPartition("*parentId")
                 .compoundAgg(
                   CompoundAgg.map(
@@ -764,7 +779,13 @@ public class RTree implements RamaSerializable {
                 .localTransform(
                   nodeChangeTableVar,
                   Path.termVal("*newChangeTable"))
-                .each(Ops.PRINTLN,"End of loop body", "*newChangeTable"))
+                .each(Ops.PRINTLN,"End of loop body", "*newChangeTable")
+		.each(Ops.LOG_ERROR,
+		      LOGGER,
+		      new Expr(Ops.TO_STRING,
+			       "End of loop body",
+			       " ",
+			       "*newChangeTable")))
               .continueLoop()))
         .each(Ops.PRINTLN, "Loop complete")
 
@@ -792,4 +813,5 @@ public class RTree implements RamaSerializable {
     declarePStates(topology);
     declareQueries(topologies);
   }
+
 }

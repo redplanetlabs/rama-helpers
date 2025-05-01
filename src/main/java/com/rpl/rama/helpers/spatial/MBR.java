@@ -1,6 +1,7 @@
 package com.rpl.rama.helpers.spatial;
 
 import java.util.Arrays;
+import java.util.Random;
 
 import com.rpl.rama.RamaSerializable;
 
@@ -138,7 +139,7 @@ public class MBR implements RamaSerializable {
   public boolean isInfinite() {
     for (int i = 0; i < mins.length; i++) {
       if (mins[i] != Double.NEGATIVE_INFINITY ||
-	  maxs[i] != Double.POSITIVE_INFINITY) {
+          maxs[i] != Double.POSITIVE_INFINITY) {
         return false;
       }
     }
@@ -438,7 +439,7 @@ public class MBR implements RamaSerializable {
 
     for (int i = 0; i < mins.length; i++) {
       if (maxs[i] < other.mins[i] || mins[i] > other.maxs[i]) {
-	return false;
+        return false;
       }
     }
 
@@ -497,7 +498,7 @@ public class MBR implements RamaSerializable {
     double otherMin = other.mins[dimension];
     double thisMin = mins[dimension];
     return (otherMin > thisMin
-	    || (Double.isInfinite(thisMin) && !(Double.isInfinite(otherMin))));
+            || (Double.isInfinite(thisMin) && !(Double.isInfinite(otherMin))));
   }
 
   public boolean isHigher(MBR other, int dimension) {
@@ -505,7 +506,7 @@ public class MBR implements RamaSerializable {
     double otherMax = other.maxs[dimension];
     double thisMax = maxs[dimension];
     return (otherMax < thisMax
-	    || (Double.isInfinite(thisMax) && !(Double.isInfinite(otherMax))));
+            || (Double.isInfinite(thisMax) && !(Double.isInfinite(otherMax))));
   }
 
   /**
@@ -601,6 +602,21 @@ public class MBR implements RamaSerializable {
     }
 
     return center;
+  }
+
+  public MBR randomSubBounds(final Random random) {
+    int numDimensions = mins.length;
+    double[] newMins = new double[numDimensions];
+    double[] newMaxs = new double[numDimensions];
+    for (int dimension = 0; dimension < numDimensions; dimension++) {
+      newMins[dimension]
+          = mins[dimension]
+          + random.nextDouble() * (maxs[dimension] - mins[dimension]);
+      newMaxs[dimension]
+          = maxs[dimension]
+          - random.nextDouble() * (maxs[dimension] - newMins[dimension]);
+    }
+    return new MBR(newMins, newMaxs);
   }
 
   @Override

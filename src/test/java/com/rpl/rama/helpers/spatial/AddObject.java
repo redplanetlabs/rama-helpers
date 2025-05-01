@@ -11,4 +11,9 @@ public class AddObject implements RamaSerializable {
     this.bounds = bounds;
     this.object = object;
   }
+
+  @Override
+  public String toString() {
+    return "AddObject [bounds=" + bounds + ", object=" + object + "]";
+  }
 }
