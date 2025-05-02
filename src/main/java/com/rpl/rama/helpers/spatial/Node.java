@@ -225,7 +225,7 @@ public abstract class Node implements INode, RamaSerializable {
   /** Return the child whose bounds needs least enlargement to include `bounds`.
       Resolve ties by choosing the entry with the rectangle of smallest area.
     */
-  public long chooseLeaf(MBR bounds) {
+  public long chooseChild(MBR bounds) {
     double minDelta = Double.MAX_VALUE;
     double chosenArea = Double.MAX_VALUE;
     long childId = -1;
