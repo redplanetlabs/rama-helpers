@@ -23,6 +23,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
@@ -272,7 +273,7 @@ public class RTreeTest {
 
   @Test
   public void uncoordinatedTest() throws Exception {
-    LOGGER.error("allFeaturesTest");
+    LOGGER.error("uncoordinatedTest");
 
     final MBR bounds = new MBR(new double[]{0,0}, new double[]{100,1000});
     final int numObjects = 20;
@@ -301,115 +302,16 @@ public class RTreeTest {
                                               "m",
                                               numObjects);
       System.out.println("Processed entries");
-      // {
-      //   DepotPartitionInfo dpi = depot.getPartitionInfo(0);
-      //   assertEquals(1, dpi.getEndOffset());
 
-      //   String a = object.selectOne(Path.key(0L));
-      //   assertNotNull("An object has been recorded", a);
-      //   assertEquals("Object has been recorded correctly", "a", a);
+      for (int i = 0; i < numObjects ; i++) {
+          RandomObject robject = objects.get(i);
+	  ArrayList<Long> foundObjects
+	    = new ArrayList<>((List<Long>) q.invoke(robject.bounds));
 
-      //   INode node = root.selectOne(Path.stay());
-      //   assertNotNull(node);
-      //   assertTrue(node.isLeaf());
-      //   assertTrue(node instanceof LeafNode);
-      //   assertEquals(1, ((Node)node).count());
-
-      //   assertEquals(new ArrayList<>(Arrays.asList(0L)),
-      //                new ArrayList<>((List<Long>)q.invoke(oneBounds)));
-      //   assertEquals(new ArrayList<>(Arrays.asList(0L)),
-      //                new ArrayList<>((List<Long>)q.invoke(twoBounds)));
-      //   assertEquals(new ArrayList<>(Arrays.asList()),
-      //                new ArrayList<>((List<Long>)q.invoke(twoHundredBounds)));
-      // }
-
-
-      // // Append another object in the root node and query for it.
-      // /* depot.append(new AddObject(oneBounds, "a"), AckLevel.ACK); */
-      // System.out.println("Appended second entry");
-      // depot.append(new AddObject(twoBounds, "b"), AckLevel.ACK);
-      // cluster.waitForMicrobatchProcessedCount(module.getClass().getName(),
-      //                                         "m",
-      //                                         2);
-      // System.out.println("Processed second entry in root node");
-      // {
-      //   DepotPartitionInfo dpi = depot.getPartitionInfo(0);
-      //   assertEquals(2, dpi.getEndOffset());
-
-      //   Node node = root.selectOne(Path.stay());
-      //   assertTrue(node instanceof Node);
-      //   assertTrue(node.isLeaf());
-      //   assertEquals(2, node.count());
-
-      //   assertEquals(new ArrayList<>(Arrays.asList(0L, 1L)),
-      //                new ArrayList<>((List<Long>)q.invoke(oneBounds)));
-      //   assertEquals(new ArrayList<>(Arrays.asList(0L, 1L)),
-      //                new ArrayList<>((List<Long>)q.invoke(twoBounds)));
-      //   assertEquals(new ArrayList<>(Arrays.asList()),
-      //                new ArrayList<>((List<Long>)q.invoke(twoHundredBounds)));
-      // }
-
-      // System.out.println("Appended third entry");
-      // // Append another object when the root node is full and query for it.
-      // depot.append(new AddObject(twoHundredBounds, "c"), AckLevel.ACK);
-      // cluster.waitForMicrobatchProcessedCount(module.getClass().getName(),
-      //                                         "m",
-      //                                         3);
-      // System.out.println("Processed third entry, splitting root node");
-      // {
-      //   DepotPartitionInfo dpi = depot.getPartitionInfo(0);
-      //   assertEquals(3, dpi.getEndOffset());
-
-      //   final Node rootNode = root.selectOne(Path.stay());
-      //   final Node childNode0 = nodes.selectOne(Path.key(0L));
-      //   final Node childNode1 = nodes.selectOne(Path.key(1L));
-
-      //   System.out.println("Root node after processing " + rootNode);
-      //   System.out.println("Node 0 after processing " + childNode0);
-      //   System.out.println("Node 1 after processing " + childNode1);
-
-      //   assertTrue(rootNode instanceof NonLeafNode);
-      //   assertFalse(rootNode.isLeaf());
-      //   assertEquals(2, rootNode.nodeId());
-      //   assertEquals(2, rootNode.parentId());
-      //   assertEquals(2, rootNode.count());
-      //   {
-      //     final Object[] children
-      //         = rootNode.children.stream().map(Child::childId).toArray();
-      //     assertArrayEquals(new Object[] { 0L, 1L }, children);
-      //   }
-      //   assertEquals(allBounds, rootNode.bounds());
-
-      //   assertEquals(0, childNode0.nodeId());
-      //   assertEquals(2, childNode0.parentId());
-      //   assertTrue(childNode0.isLeaf());
-      //   assertEquals(2, childNode0.count());
-      //   {
-      //     final Object[] children
-      //         = childNode0.children.stream().map(Child::childId).toArray();
-      //     assertArrayEquals(new Object[] { 0L, 1L }, children);
-      //   }
-      //   assertEquals(twoBounds, childNode0.bounds());
-
-      //   assertEquals(1, childNode1.nodeId());
-      //   assertEquals(2, childNode1.parentId());
-      //   assertTrue(childNode0.isLeaf());
-      //   assertEquals(1, childNode1.count()); // object 2
-      //   {
-      //     final Object[] children
-      //         = childNode1.children.stream().map(Child::childId).toArray();
-      //     assertArrayEquals(new Object[] { 2L }, children);
-      //   }
-      //   assertEquals(twoHundredBounds, childNode1.bounds());
-
-      //   assertEquals(new ArrayList<>(Arrays.asList(0L, 1L)),
-      //                new ArrayList<>((List<Long>)q.invoke(oneBounds)));
-      //   assertEquals(new ArrayList<>(Arrays.asList(0L, 1L)),
-      //                new ArrayList<>((List<Long>)q.invoke(twoBounds)));
-      //   assertEquals(new ArrayList<>(Arrays.asList(2l)),
-      //                new ArrayList<>((List<Long>)q.invoke(twoHundredBounds)));
-      // }
+	  assertTrue(foundObjects.contains(robject.id));
+        }
     }
+
     LOGGER.error("uncoordinatedTest done");
   }
 }

@@ -744,7 +744,7 @@ public class RTree implements RamaSerializable {
                 .ifTrue(
                   new Expr(Ops.IS_NULL, "*nodesNode"),
                   // TODO add assert that the root node has the correct node id
-                  Block.macro(rootNode(nodeVar)),                  ,
+                  Block.macro(rootNode(nodeVar)),
                   Block.each(Ops.IDENTITY, "*nodesNode").out(nodeVar))
                 .each(Ops.PRINTLN, "nodeVar", nodeVar)
                 .each(Ops.PRINTLN, "nodeOpsList", "nodeOpsList")
