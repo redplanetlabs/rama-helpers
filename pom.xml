@@ -23,6 +23,16 @@
             <artifactId>rama</artifactId>
             <version>1.0.0</version>
             <scope>provided</scope>
+	    <exclusions>
+	      <!-- <exclusion> -->
+	      <!-- 	<groupId>org.apache.logging.log4j</groupId> -->
+	      <!-- 	<artifactId>log4j-1.2-api</artifactId> -->
+	      <!-- </exclusion> -->
+	    <!--   <exclusion> -->
+	    <!-- 	<groupId>commons-logging</groupId> -->
+	    <!-- 	<artifactId>commons-logging</artifactId> -->
+	    <!--   </exclusion> -->
+	    </exclusions>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -44,6 +54,24 @@
 	  <groupId>org.mockito</groupId>
 	  <artifactId>mockito-inline</artifactId>
 	  <version>5.2.0</version>
+	  <scope>test</scope>
+	</dependency>
+	<dependency>
+	  <groupId>org.apache.logging.log4j</groupId>
+	  <artifactId>log4j-slf4j18-impl</artifactId>
+	  <version>2.16.0</version>
+	  <scope>test</scope>
+	</dependency>
+	<dependency>
+	  <groupId>org.apache.logging.log4j</groupId>
+	  <artifactId>log4j-api</artifactId>
+	  <version>2.16.0</version>
+	  <scope>test</scope>
+	</dependency>
+	<dependency>
+          <groupId>org.apache.logging.log4j</groupId>
+	  <artifactId>log4j-core</artifactId>
+	  <version>2.16.0</version>
 	  <scope>test</scope>
 	</dependency>
     </dependencies>
@@ -76,6 +104,10 @@
                 <configuration>
                     <trimStackTrace>false</trimStackTrace>
                     <skipTests>false</skipTests>
+		    <systemPropertyVariables>
+		      <clojure.tools.logging.factory>clojure.tools.logging.impl/log4j2-factory</clojure.tools.logging.factory>
+		    </systemPropertyVariables>
+		    <!-- <argLine>-XX:+EnableDynamicAgentLoading</argLine> -->
                 </configuration>
             </plugin>
             <plugin>
@@ -91,6 +123,7 @@
             <plugin>
           			<groupId>org.apache.maven.plugins</groupId>
           			<artifactId>maven-javadoc-plugin</artifactId>
+				<version>3.11.2</version>
           			<executions>
           				<execution>
             					<id>attach-javadocs</id>
@@ -106,6 +139,11 @@
                 <directory>src/main/resources</directory>
             </resource>
         </resources>
+        <testResources>
+            <testResource>
+                <directory>src/test/resources</directory>
+            </testResource>
+        </testResources>
     </build>
       <distributionManagement>
         <repository>

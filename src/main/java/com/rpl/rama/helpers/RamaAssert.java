@@ -5,6 +5,7 @@ import com.rpl.rama.Expr;
 import com.rpl.rama.Helpers;
 import com.rpl.rama.ops.Ops;
 import com.rpl.rama.ops.RamaFunction1;
+import com.rpl.rama.ops.RamaFunction2;
 
 import clojure.java.api.Clojure;
 import clojure.lang.IFn;
@@ -25,8 +26,12 @@ public class RamaAssert {
     return (boolean)deref.invoke(assertVar);
   }
 
-  private static <T0>  Object failedAssert(T0 t0) {
+  private static <T0>  Object failedAssert1(T0 t0) {
     throw new AssertionError("Assertion failed: arg " + t0);
+  }
+
+  private static <T0, T1>  Object failedAssert2(T0 t0, T1 t1) {
+    throw new AssertionError("Assertion failed, arg0: " + t0 + ", arg1: " + t1);
   }
 
   public static <T> Block assertMacro(RamaFunction1<T, Boolean> fn, Object arg) {
@@ -37,7 +42,22 @@ public class RamaAssert {
           .each(fn, arg).out(assertResultVar)
           .ifTrue(
             new Expr(Ops.NOT, new Expr(Ops.IDENTITY, assertResultVar)),
-            Block.each(RamaAssert::failedAssert, arg));
+            Block.each(RamaAssert::failedAssert1, arg));
+    } else {
+      // TODO is there a better NoOp?
+      return Block.each(Ops.IDENTITY, 1).out("*noop");
+    }
+  }
+
+  public static <T, U> Block assertMacro(RamaFunction2<T, U, Boolean> fn, Object arg0, Object arg1) {
+    final String assertResultVar = Helpers.genVar("assertResult");
+    if (isAssertEnabled()) {
+      return
+          Block
+          .each(fn, arg0, arg1).out(assertResultVar)
+          .ifTrue(
+            new Expr(Ops.NOT, new Expr(Ops.IDENTITY, assertResultVar)),
+            Block.each(RamaAssert::failedAssert2, arg0, arg1));
     } else {
       // TODO is there a better NoOp?
       return Block.each(Ops.IDENTITY, 1).out("*noop");

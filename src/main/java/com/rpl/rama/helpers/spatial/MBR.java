@@ -36,6 +36,10 @@ public class MBR implements RamaSerializable {
     }
   }
 
+  public static MBR empty(int dimensions) {
+    return new MBR(dimensions);
+  }
+
   /**
    * Creates an MBR with the specified min and max coordinates.
    *

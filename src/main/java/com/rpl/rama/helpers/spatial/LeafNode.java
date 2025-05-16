@@ -1,5 +1,9 @@
 package com.rpl.rama.helpers.spatial;
 
+import java.util.List;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
+
 public class LeafNode extends Node {
   /* final long id; */
   /* long parent; */
@@ -184,5 +188,24 @@ public class LeafNode extends Node {
   /* 	bounds = bounds.union(child.bounds); */
   /*   } */
   /*   return bounds; */
-  /* } */
+	/* } */
+
+  public List<String> dotNodes() {
+    final String selfNode = "" + id + " [label=\"" + id + "\"]";
+
+    final List<String> objs = children
+      .stream()
+      .map((Child child) ->
+	   "obj_" + child.id + " [label=\"obj_" + child.id + "\"]")
+      .collect(Collectors.toList());
+    objs.add(selfNode);
+    return objs;
+  }
+
+  public List<String> dotEdges() {
+    return children
+      .stream()
+      .map((Child child) -> "" + id + " -> obj_" + child.id)
+      .collect(Collectors.toList());
+  }
 }

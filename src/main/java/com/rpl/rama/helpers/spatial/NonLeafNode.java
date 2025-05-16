@@ -1,5 +1,9 @@
 package com.rpl.rama.helpers.spatial;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+
 /** A node in the R-Tree */
 public class NonLeafNode extends Node {
   /* long id; */
@@ -68,5 +72,17 @@ public class NonLeafNode extends Node {
   /* 	} */
   /*   } */
   /*   return this; */
-  /* } */
+	/* } */
+
+  public List<String> dotNodes() {
+    return (List<String>) Arrays.asList("" + id + " [label=\"" + id + "\"]");
+  }
+
+  public List<String> dotEdges() {
+    return children
+      .stream()
+      .map((Child child) -> "" + id + " -> " + child.id)
+      .collect(Collectors.toList());
+  }
+
 }

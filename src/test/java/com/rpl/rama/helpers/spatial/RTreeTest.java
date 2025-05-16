@@ -32,6 +32,10 @@ import java.util.List;
 import java.util.Random;
 
 import org.junit.Test;
+
+// import org.apache.logging.log4j.LogManager;
+// import org.apache.logging.log4j.Logger;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,6 +44,7 @@ import clojure.lang.IFn.LOOD;
 public class RTreeTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RTreeTest.class);
+  // private static final Logger LOGGER = LogManager.getLogger(RTreeTest.class);
 
   /** A module implementing a 2D spacial index of String values */
   public static class Module implements RamaModule {
@@ -67,10 +72,15 @@ public class RTreeTest {
       m.source("*depot").out("*microbatch")
           .batchBlock(
             Block
-	    .each(Ops.LOG_ERROR, LOGGER, "New Microbatch")
-	    .explodeMicrobatch("*microbatch").out("*v")
-	    .each(Ops.LOG_ERROR, LOGGER, new Expr(Ops.TO_STRING, "MB Process", " ", "*v"))
+            .each(Ops.LOG_ERROR, LOGGER, "New Microbatch")
+            .explodeMicrobatch("*microbatch").out("*v")
+            .each(Ops.LOG_ERROR,
+                  LOGGER,
+                  new Expr(Ops.TO_STRING, "MB Process ", "*v"))
             .macro(idGenerator.genId("*objectId"))
+            .each(Ops.LOG_ERROR,
+                  LOGGER,
+                  new Expr(Ops.TO_STRING, "ObjectId ", "*objectId"))
             .macro(extractJavaFields("*v", "*bounds", "*object"))
             .hashPartition("$$object", "*objectId")
             .localTransform("$$object",
@@ -96,8 +106,8 @@ public class RTreeTest {
 
 
   @Test
-  public void allFeaturesTest() throws Exception {
-    LOGGER.error("allFeaturesTest");
+  public void basicRootNodeSplitTest() throws Exception {
+    LOGGER.error("basicRootNodeSplitTest");
 
     try(InProcessCluster cluster = InProcessCluster.create()) {
       final RamaModule module = new Module();
@@ -238,16 +248,107 @@ public class RTreeTest {
                      new ArrayList<>((List<Long>)q.invoke(twoHundredBounds)));
       }
     }
-    LOGGER.error("allFeaturesTest done");
+    LOGGER.error("basicRootNodeSplitTest done");
   }
 
+  @Test
+  public void multiRootNodeSplitTest() throws Exception {
+    LOGGER.error("multiRootNodeSplitTest");
+
+    try(InProcessCluster cluster = InProcessCluster.create()) {
+      final RamaModule module = new Module();
+      cluster.launchModule(module, new LaunchConfig(2, 2));
+
+      final Depot depot = cluster.clusterDepot(Module.class.getName(), "*depot");
+      final PState nodes = cluster.clusterPState(Module.class.getName(), "$$test__nodes");
+      final PState root = cluster.clusterPState(Module.class.getName(), "$$test__root");
+      final PState object = cluster.clusterPState(Module.class.getName(), "$$object");
+      final QueryTopologyClient q = cluster.clusterQuery(Module.class.getName(), "objectsInBounds");
+      final QueryTopologyClient<List<Long>> dump
+        = cluster.clusterQuery(Module.class.getName(), "dumpTree");
+      final QueryTopologyClient<List<String>> dumpDot
+        = cluster.clusterQuery(Module.class.getName(), "dumpDot");
+      final QueryTopologyClient<Boolean> verify
+        = cluster.clusterQuery(Module.class.getName(), "verifyTree");
+
+      final double[] origin = {0, 0};
+      final double[] ones = {1, 1};
+      final double[] twos = {2, 2};
+      final double[] threes = {3, 3};
+      final double[] fours = {4, 4};
+      final double[] fives = {5, 5};
+      final double[] oneHundreds = {100, 100};
+      final double[] twoHundreds = {200, 200};
+
+      final MBR oneBounds = new MBR(origin, ones);
+      final MBR twoBounds = new MBR(origin, twos);
+      final MBR threeBounds = new MBR(origin, threes);
+      final MBR fourBounds = new MBR(origin, fours);
+      final MBR fiveBounds = new MBR(origin, fives);
+
+      final MBR twoHundredBounds = new MBR(oneHundreds, twoHundreds);
+      final MBR allBounds = new MBR(origin, twoHundreds);
+
+      System.out.println("START");
+
+      // Test that we can append an object in the root node and query for it.
+      depot.append(new AddObject(oneBounds, "a"), AckLevel.NONE);
+      depot.append(new AddObject(twoBounds, "b"), AckLevel.NONE);
+      depot.append(new AddObject(threeBounds, "c"), AckLevel.NONE);
+      depot.append(new AddObject(fourBounds, "d"), AckLevel.NONE);
+      depot.append(new AddObject(fiveBounds, "e"), AckLevel.NONE);
+
+      System.out.println("Appended one entry");
+      cluster.waitForMicrobatchProcessedCount(module.getClass().getName(),
+                                              "m",
+                                              5);
+      DepotPartitionInfo dpi0 = depot.getPartitionInfo(0);
+      DepotPartitionInfo dpi1 = depot.getPartitionInfo(1);
+      assertEquals(5, dpi0.getEndOffset() + dpi1.getEndOffset());
+
+      System.out.println("Processed five entries creating two levels");
+      {
+        /* INode node = root.selectOne(Path.stay()); */
+        /* assertNotNull(node); */
+        /* assertFalse(node.isLeaf()); */
+        /* assertTrue(node instanceof NonLeafNode); */
+        /* assertEquals(2, ((Node)node).count()); */
+
+        LOGGER.error("Multi Dump");
+        dump.invoke();
+	List<String> elements = dumpDot.invoke();
+	System.out.println("digraph G {");
+	for (String s : elements) {
+	  System.out.println(s);
+	}
+	System.out.println("}");
+
+        LOGGER.error("Verify " + verify.invoke());
+
+        assertEquals(new ArrayList<>(Arrays.asList(4L, 3L, 0L, 2L, 1L)),
+                     new ArrayList<>((List<Long>)q.invoke(oneBounds)));
+        assertEquals(new ArrayList<>(Arrays.asList(4L, 3L, 0L, 2L, 1L)),
+                     new ArrayList<>((List<Long>)q.invoke(twoBounds)));
+        assertEquals(new ArrayList<>(Arrays.asList()),
+                     new ArrayList<>((List<Long>)q.invoke(twoHundredBounds)));
+      }
+
+    }
+    LOGGER.error("multiRootNodeSplitTest done");
+  }
 
   public static class RandomObject {
     final public MBR bounds;
     final public long id;
+
     public RandomObject(MBR bounds, long id) {
       this.bounds = bounds;
       this.id = id;
+    }
+
+    @Override
+    public String toString() {
+      return "RandomObject [bounds=" + bounds + ", id=" + id + "]";
     }
   }
 
@@ -273,7 +374,7 @@ public class RTreeTest {
 
   @Test
   public void uncoordinatedTest() throws Exception {
-    LOGGER.error("uncoordinatedTest");
+    LOGGER.debug("uncoordinatedTest");
 
     final MBR bounds = new MBR(new double[]{0,0}, new double[]{100,1000});
     final int numObjects = 20;
@@ -288,8 +389,12 @@ public class RTreeTest {
       final PState root = cluster.clusterPState(Module.class.getName(), "$$test__root");
       final PState object = cluster.clusterPState(Module.class.getName(), "$$object");
       final QueryTopologyClient q = cluster.clusterQuery(Module.class.getName(), "objectsInBounds");
+      final QueryTopologyClient<Boolean> verify
+        = cluster.clusterQuery(Module.class.getName(), "verifyTree");
+      final QueryTopologyClient<List<Long>> dump
+        = cluster.clusterQuery(Module.class.getName(), "dumpTree");
 
-      System.out.println("START");
+      LOGGER.debug("START");
 
       // Test that we can append an object in the root node and query for it.
       for (int i = 0; i < numObjects ; i++) {
@@ -297,21 +402,27 @@ public class RTreeTest {
           depot.append(new AddObject(robject.bounds, robject.id), AckLevel.ACK);
         }
 
-      System.out.println("Appended one entry");
+      LOGGER.debug("Appended one entry");
       cluster.waitForMicrobatchProcessedCount(module.getClass().getName(),
                                               "m",
                                               numObjects);
-      System.out.println("Processed entries");
+      LOGGER.debug("Processed entries");
+
+      LOGGER.error("Dump");
+      dump.invoke();
+
+      LOGGER.error("Verify " + verify.invoke());
 
       for (int i = 0; i < numObjects ; i++) {
           RandomObject robject = objects.get(i);
-	  ArrayList<Long> foundObjects
-	    = new ArrayList<>((List<Long>) q.invoke(robject.bounds));
+          ArrayList<Long> foundObjects
+            = new ArrayList<>((List<Long>) q.invoke(robject.bounds));
 
-	  assertTrue(foundObjects.contains(robject.id));
+          System.out.println("Found "+foundObjects+" for " + robject);
+          assertTrue(foundObjects.contains(robject.id));
         }
     }
 
-    LOGGER.error("uncoordinatedTest done");
+    LOGGER.debug("uncoordinatedTest done");
   }
 }

@@ -19,4 +19,8 @@ public final class Child implements RamaSerializable {
   long childId() {
     return id;
   }
+
+  public static boolean isChild(Object x) {
+    return x instanceof Child;
+  }
 }

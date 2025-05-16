@@ -39,6 +39,10 @@ public abstract class Node implements INode, RamaSerializable {
     return children.size();
   }
 
+  public List<Child> getChildren() {
+    return children;
+  }
+
   public int numFreeEdges(int branchingFactor) {
     return branchingFactor - children.size();
   }
@@ -242,4 +246,5 @@ public abstract class Node implements INode, RamaSerializable {
     }
     return childId;
   }
+
 }
