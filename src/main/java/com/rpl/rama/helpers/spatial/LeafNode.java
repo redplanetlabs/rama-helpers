@@ -205,7 +205,10 @@ public class LeafNode extends Node {
   public List<String> dotEdges() {
     return children
       .stream()
-      .map((Child child) -> "" + id + " -> obj_" + child.id)
+      .map((Child child)
+	   ->
+	   "" + id + " -> obj_" + child.id
+	   + " [label=\"" + child.bounds.ranges()+"\"]")
       .collect(Collectors.toList());
   }
 }

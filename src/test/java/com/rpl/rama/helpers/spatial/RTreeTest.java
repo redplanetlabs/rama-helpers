@@ -391,6 +391,8 @@ public class RTreeTest {
       final QueryTopologyClient q = cluster.clusterQuery(Module.class.getName(), "objectsInBounds");
       final QueryTopologyClient<Boolean> verify
         = cluster.clusterQuery(Module.class.getName(), "verifyTree");
+      final QueryTopologyClient<List<String>> dumpDot
+        = cluster.clusterQuery(Module.class.getName(), "dumpDot");
       final QueryTopologyClient<List<Long>> dump
         = cluster.clusterQuery(Module.class.getName(), "dumpTree");
 
@@ -411,7 +413,16 @@ public class RTreeTest {
       LOGGER.error("Dump");
       dump.invoke();
 
+      List<String> elements = dumpDot.invoke();
+      System.out.println("digraph G {");
+      for (String s : elements) {
+	System.out.println(s);
+      }
+      System.out.println("}");
+
       LOGGER.error("Verify " + verify.invoke());
+
+      LOGGER.error("Checking objects");
 
       for (int i = 0; i < numObjects ; i++) {
           RandomObject robject = objects.get(i);

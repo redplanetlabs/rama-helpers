@@ -45,9 +45,13 @@ public class RamaAssert {
             Block.each(RamaAssert::failedAssert1, arg));
     } else {
       // TODO is there a better NoOp?
-      return Block.each(Ops.IDENTITY, 1).out("*noop");
+      // return Block.each(Ops.IDENTITY, 1).out("*noop");
+      // TODO try null as well
+      return Block.create();
     }
   }
+
+  // TODO Add method for AnyArity with Object... vararg
 
   public static <T, U> Block assertMacro(RamaFunction2<T, U, Boolean> fn, Object arg0, Object arg1) {
     final String assertResultVar = Helpers.genVar("assertResult");

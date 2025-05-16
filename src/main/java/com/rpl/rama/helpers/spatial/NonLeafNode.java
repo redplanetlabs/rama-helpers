@@ -81,7 +81,9 @@ public class NonLeafNode extends Node {
   public List<String> dotEdges() {
     return children
       .stream()
-      .map((Child child) -> "" + id + " -> " + child.id)
+      .map((Child child) ->
+	   "" + id + " -> " + child.id
+	   + " [label=\"" + child.bounds.ranges()+"\"]")
       .collect(Collectors.toList());
   }
 

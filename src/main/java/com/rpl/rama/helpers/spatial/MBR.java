@@ -437,17 +437,18 @@ public class MBR implements RamaSerializable {
    */
   public boolean isIntersects(MBR other) {
     assert hasSameDimensions(other) : "MBR dimensions must match";
-    if (isEmpty() || other.isEmpty() || !overlaps(other)) {
-      return false;
-    }
+    return overlaps(other);
+    // if (isEmpty() || other.isEmpty() || !overlaps(other)) {
+    //   return false;
+    // }
 
-    for (int i = 0; i < mins.length; i++) {
-      if (maxs[i] < other.mins[i] || mins[i] > other.maxs[i]) {
-        return false;
-      }
-    }
+    // for (int i = 0; i < mins.length; i++) {
+    //   if (maxs[i] < other.mins[i] || mins[i] > other.maxs[i]) {
+    //     return false;
+    //   }
+    // }
 
-    return true;
+    // return true;
   }
 
   /**
@@ -675,5 +676,13 @@ public class MBR implements RamaSerializable {
     }
 
     return hash;
+  }
+
+  public String ranges() {
+    String res = "";
+    for (int i = 0; i < mins.length; ++i) {
+      res = res + "[" + mins[i] + ", " + maxs[i] + "] ";
+    }
+    return res;
   }
 }

@@ -364,7 +364,7 @@ public class RTree implements RamaSerializable {
         .batchBlock(
           Block
           .allPartition()
-          .localTransform(rootPstate, Path.termVal(rootNodeVar)));
+	  .macro(writeRoot(rootNodeVar)));
   }
 
   private LeafNode constructRoot(long id) {
@@ -464,6 +464,13 @@ public class RTree implements RamaSerializable {
               new Expr(Ops.TO_STRING, "writeNode: ", nodeIdVar, " ", nodeVar))
         .hashPartition(nodeIdVar)
         .localTransform(nodesPstate, Path.key(nodeIdVar).termVal(nodeVar));
+  }
+
+  protected Block writeRoot(final String nodeVar) {
+    return Block
+      .each(Ops.LOG_DEBUG, LOGGER,
+	    new Expr(Ops.TO_STRING, "writeRoot: ", nodeVar))
+      .localTransform(rootPstate, Path.termVal(nodeVar));
   }
 
   /** Perform all operations from nodeOpsVar on nodeVar.
@@ -628,7 +635,8 @@ public class RTree implements RamaSerializable {
                   .each(Node::overlapping, "*node", boundsVar).out("*childIds")
                   .each(Ops.LOG_DEBUG,
                         LOGGER,
-                        new Expr(Ops.TO_STRING, "Child ids: ", "*childIds"))
+                        new Expr(Ops.TO_STRING,
+				 "search child ids: ", "*childIds"))
                   .each(Ops.EXPLODE, "*childIds").out("*childId")
                   .macro(readNode("*childId", "*child"))
                   .each(Ops.LOG_DEBUG,
@@ -668,7 +676,13 @@ public class RTree implements RamaSerializable {
     return l;
   }
 
-  private static <T> List<T> conjList(List<T> l, T n) {
+  // private static <T> List<T> conjList(List<T> l, T n) {
+  //   LOGGER.debug("conjList", n.toString());
+  //   l.add(n);
+  //   return l;
+  // }
+
+  private static List<Object> conjList(List<Object> l, Object n) {
     LOGGER.debug("conjList", n.toString());
     l.add(n);
     return l;
@@ -751,7 +765,7 @@ public class RTree implements RamaSerializable {
                       .continueLoop(
                         new Expr(RTree::<Node>restList, "*children"),
                         new Expr(MBR::union, "*totalBounds", "*bounds"),
-                        new Expr(RTree::<Node>conjList,
+                        new Expr(RTree::conjList,
                                  "*childrenNodes",
                                  "*childNode"))))
                   .out("*totalBounds", "*childrenNodes")
@@ -793,6 +807,7 @@ public class RTree implements RamaSerializable {
 
   private Block dumpDot(final String elementsVar) {
     return Block
+      .allPartition()
       .each(Ops.LOG_DEBUG,
 	    LOGGER,
 	    new Expr(Ops.TO_STRING,
@@ -989,9 +1004,8 @@ public class RTree implements RamaSerializable {
                         .each(Ops.LOG_DEBUG, LOGGER, "no new siblings")
                         .ifTrue(new Expr(Ops.IDENTITY, "*isRoot"),
                                 Block
-                                .hashPartition(new Expr(Ops.CURRENT_TASK_ID))
-                                .localTransform(rootPstate,
-                                                Path.termVal(nodeVar)),
+                                .directPartition("*taskId")
+                                .macro(writeRoot(nodeVar)),
                                 Block
                                 .each(Node::nodeId, nodeVar).out("*nodeId")
                                 .macro(writeNode("*nodeId",nodeVar)))
@@ -1018,8 +1032,8 @@ public class RTree implements RamaSerializable {
                                 .each(Ops.LOG_DEBUG, LOGGER,
                                       new Expr(Ops.TO_STRING,
                                                "Write new root: ", "*parent"))
-                                .localTransform(rootPstate,
-                                                Path.termVal("*parent"))
+				.directPartition("*taskId")
+				.macro(writeRoot("*parent"))
                                 .each(Node::setParentId,
                                       nodeVar, "*parentId")
                                 .macro(writeNode("*nodeId",nodeVar)),
@@ -1060,7 +1074,7 @@ public class RTree implements RamaSerializable {
                           new Expr(Ops.TO_STRING, "Ops: ", "*ops", " ", new Expr(Ops.CLASS, "*ops")))
                     .each(Ops.LOG_ERROR, LOGGER,
                           new Expr(Ops.TO_STRING, "newOp: ", "*newOp"))
-                    .each(RTree::<RTreeCollector.AddObject>conjList1,
+                    .each(RTree::<RTreeCollector.AddObject>conjList,
                           "*ops",
                           "*newOp").out("*newOps1")
                     .continueLoop("*remaining", "*newOps1")))
@@ -1108,39 +1122,51 @@ public class RTree implements RamaSerializable {
         // Broadcast root node to all tasks
         .batchBlock(
           Block
-          .each(Ops.LOG_DEBUG, LOGGER, "Updating global partitions")
           .macro(rootNode("*rootNode"))
+          .each(Ops.LOG_DEBUG,
+		LOGGER,
+		new Expr(Ops.TO_STRING,
+			 "Updating global partitions: ",
+			 "*rootNode"))
           .macro(broadcastRootNodeValue("*rootNode")))
         ;}
 
   private void declareQueries(final Topologies topologies) {
+    // TODO scope query names by rtree prfix
     topologies.query("objectsInBounds", "*bounds").out("*objects")
-        .each(Ops.LOG_DEBUG,
-              LOGGER,
-              new Expr(Ops.TO_STRING, "objectsInBounds: ", "*bounds"))
-        .localSelect(rootPstate, Path.stay()).out("*root")
-        .each(Ops.LOG_DEBUG, LOGGER, new Expr(Ops.TO_STRING, "root: ", "*root"))
-        .macro(search("*bounds", "*root", "*objects"))
-        .originPartition()
-        .agg(Agg.list("*objects")).out("*objects");
+      .each(Ops.LOG_DEBUG,
+	    LOGGER,
+	    new Expr(Ops.TO_STRING, "search objectsInBounds: ", "*bounds"))
+      .localSelect(rootPstate, Path.stay()).out("*root")
+      .each(Ops.LOG_DEBUG, LOGGER,
+	    new Expr(Ops.TO_STRING, "search root: ", "*root"))
+      .macro(search("*bounds", "*root", "*objects"))
+      .originPartition()
+      .agg(Agg.list("*objects")).out("*objects");
 
     topologies.query("verifyTree").out("*isValid")
-        .localSelect(rootPstate, Path.stay()).out("*root")
-        .each(Ops.LOG_DEBUG, LOGGER, new Expr(Ops.TO_STRING, "root: ", "*root"))
-        .macro(verify("*root", "*isValid"))
-        .originPartition()
-        .agg(Agg.list("*isValid")).out("*isValid");
+      .localSelect(rootPstate, Path.stay()).out("*root")
+      .each(Ops.LOG_DEBUG, LOGGER,
+	    new Expr(Ops.TO_STRING, "verify root: ", "*root"))
+      .macro(verify("*root", "*isValid"))
+      .originPartition()
+      .agg(Agg.list("*isValid")).out("*isValid")
+      .localSelect(rootPstate, Path.stay()).out("*root")
+      .each(Ops.LOG_DEBUG, LOGGER,
+	    new Expr(Ops.TO_STRING, "verify root at end: ", "*root"))
+      ;
 
     topologies.query("dumpTree").out("*task-ids")
-        .allPartition()
-        .localSelect(rootPstate, Path.stay()).out("*root")
-        .each(Ops.LOG_DEBUG, LOGGER, new Expr(Ops.TO_STRING, "root: ", "*root"))
-        .macro(dump("*root"))
-        .each(Ops.CURRENT_TASK_ID).out("*task-id")
-        .originPartition()
-        .agg(Agg.list("*task-id")).out("*task-ids");
-    topologies.query("dumpDot").out("*allElements")
       .allPartition()
+      .localSelect(rootPstate, Path.stay()).out("*root")
+      .each(Ops.LOG_DEBUG, LOGGER,
+	    new Expr(Ops.TO_STRING, "dump tree root: ", "*root"))
+      .macro(dump("*root"))
+      .each(Ops.CURRENT_TASK_ID).out("*task-id")
+      .originPartition()
+      .agg(Agg.list("*task-id")).out("*task-ids");
+
+    topologies.query("dumpDot").out("*allElements")
       .macro(dumpDot("*elements"))
       .originPartition()
       .agg(Agg.list("*elements")).out("*allElements");
