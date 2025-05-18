@@ -1,5 +1,6 @@
 package com.rpl.rama.helpers.spatial;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
@@ -193,7 +194,7 @@ public class LeafNode extends Node {
   public List<String> dotNodes() {
     final String selfNode = "" + id + " [label=\"" + id + "\"]";
 
-    final List<String> objs = children
+    final List<String> objs = ((Collection<Child>)children)
       .stream()
       .map((Child child) ->
 	   "obj_" + child.id + " [label=\"obj_" + child.id + "\"]")
@@ -203,7 +204,7 @@ public class LeafNode extends Node {
   }
 
   public List<String> dotEdges() {
-    return children
+    return ((Collection<Child>)children)
       .stream()
       .map((Child child)
 	   ->

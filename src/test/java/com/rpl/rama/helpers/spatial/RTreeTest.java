@@ -28,6 +28,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Random;
 
@@ -213,7 +214,8 @@ public class RTreeTest {
         assertEquals(2, rootNode.count());
         {
           final Object[] children
-              = rootNode.children.stream().map(Child::childId).toArray();
+	    = ((Collection<Child>)rootNode.children)
+	    .stream().map(Child::childId).toArray();
           assertArrayEquals(new Object[] { 0L, 1L }, children);
         }
         assertEquals(allBounds, rootNode.bounds());
@@ -224,7 +226,8 @@ public class RTreeTest {
         assertEquals(2, childNode0.count());
         {
           final Object[] children
-              = childNode0.children.stream().map(Child::childId).toArray();
+	    = ((Collection<Child>)childNode0.children)
+	    .stream().map(Child::childId).toArray();
           assertArrayEquals(new Object[] { 0L, 1L }, children);
         }
         assertEquals(twoBounds, childNode0.bounds());
@@ -235,7 +238,8 @@ public class RTreeTest {
         assertEquals(1, childNode1.count()); // object 2
         {
           final Object[] children
-              = childNode1.children.stream().map(Child::childId).toArray();
+	    = ((Collection<Child>)childNode1.children)
+	    .stream().map(Child::childId).toArray();
           assertArrayEquals(new Object[] { 2L }, children);
         }
         assertEquals(twoHundredBounds, childNode1.bounds());

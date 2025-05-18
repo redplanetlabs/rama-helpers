@@ -2,6 +2,7 @@ package com.rpl.rama.helpers.spatial;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -9,16 +10,19 @@ import java.util.stream.IntStream;
 
 import com.rpl.rama.RamaSerializable;
 
+import clojure.lang.PersistentHashMap;
+import clojure.lang.PersistentVector;
+
 // TODO custom read/write
 public abstract class Node implements INode, RamaSerializable {
   final long id;
   long parent;
-  final List<Child> children;
+  PersistentVector children;
 
   public Node(long id, long parent) {
     this.id = id;
     this.parent = parent;
-    this.children = new ArrayList<>();
+    this.children = Vector.empty();
   }
 
   /* public Node(long id, long parent, Child child) { */
@@ -39,7 +43,7 @@ public abstract class Node implements INode, RamaSerializable {
     return children.size();
   }
 
-  public List<Child> getChildren() {
+  public PersistentVector getChildren() {
     return children;
   }
 
@@ -54,12 +58,12 @@ public abstract class Node implements INode, RamaSerializable {
   public Node add(MBR bounds, long id) {
     System.out.println(
       "Node::add "+ this + "  bounds: "+ bounds + ",  id: " + id);
-    children.add(new Child(bounds, id));
+    children = children.cons(new Child(bounds, id));
     return this;
   }
 
   public Node addChild(Child child) {
-    children.add(child);
+    children = children.cons(child);
     return this;
   }
 
@@ -81,15 +85,15 @@ public abstract class Node implements INode, RamaSerializable {
   }
 
   public List<Long> overlapping(MBR bounds) {
-    return children.stream()
+    return ((Collection<Child>)children).stream()
       .filter(child -> child.bounds.isIntersects(bounds))
       .map(child -> child.id)
       .collect(Collectors.toList());
   }
 
   public MBR unionBounds() {
-    MBR unionBounds = children.get(0).bounds;
-    for (Child child : children) {
+    MBR unionBounds = ((Child)children.get(0)).bounds;
+    for (Child child : (Collection<Child>)children) {
       unionBounds = unionBounds.union(child.bounds);
     }
     return unionBounds;
@@ -97,9 +101,10 @@ public abstract class Node implements INode, RamaSerializable {
 
   public Node updateChild(Node other) {
     for (int i=0; i < children.size() ; i++) {
-      Child child = children.get(i);
+      Child child = (Child)children.get(i);
       if (child.id == other.nodeId()) {
-        children.set(i, new Child(other.bounds(), other.nodeId()));
+        children = (PersistentVector)children
+	  .set(i, new Child(other.bounds(), other.nodeId()));
         break;
       }
     }
@@ -119,12 +124,12 @@ public abstract class Node implements INode, RamaSerializable {
   // LPS3. [Select the most extreme pair.] Choose the pair with the greatest
   // normalised separation alobg any dimension.
   {
-    Child first = children.get(0);
+    Child first = (Child)children.get(0);
     int dimensions = first.bounds.dimensions();
     List<Child> lowers = new ArrayList<>(Collections.nCopies(dimensions, first));
     List<Child> uppers = new ArrayList<>(Collections.nCopies(dimensions, first));
     final MBR unionBounds = unionBounds();
-    for (Child child : children) {
+    for (Child child : (Collection<Child>)children) {
       for (int dimension = 0; dimension < dimensions; dimension++) {
         if (child.bounds.isHigher(lowers.get(dimension).bounds, dimension)) {
           lowers.set(dimension, child);
@@ -167,12 +172,12 @@ public abstract class Node implements INode, RamaSerializable {
     // elements of the groups. Assign each to a group.
     // logger.error("splitNodeImpl");
 
-    List<Child> toInsert = new ArrayList<>(children);
+    List<Child> toInsert = new ArrayList<>((Collection<Child>)children);
     List<Child> seeds = extremes();
     toInsert.removeAll(seeds);
 
-    children.clear();
-    children.add(seeds.get(0));
+    children = Vector.empty();
+    children = children.cons(seeds.get(0));
 
     List<Node> nodes
       = Arrays.asList(this, ((Node)newSibling(newNodeId)).addChild(seeds.get(1)));
@@ -184,10 +189,11 @@ public abstract class Node implements INode, RamaSerializable {
       // stop.
       int nRemaining = toInsert.size();
       if (nRemaining <= minChildren - this.count()) {
-        this.children.addAll(toInsert);
+        this.children = Vector.into(children, toInsert);
         break;
       } else if (nRemaining <= minChildren - nodes.get(1).count()) {
-        nodes.get(1).children.addAll(toInsert);
+	Node n = nodes.get(1);
+        n.children = n.children.cons(toInsert);
         break;
       }
 
@@ -219,8 +225,8 @@ public abstract class Node implements INode, RamaSerializable {
   }
 
   public MBR bounds() {
-    MBR bounds = children.get(0).bounds;
-    for (Child child : children) {
+    MBR bounds = ((Child)children.get(0)).bounds;
+    for (Child child : (Collection<Child>)children) {
       bounds = bounds.union(child.bounds);
     }
     return bounds;
@@ -233,7 +239,7 @@ public abstract class Node implements INode, RamaSerializable {
     double minDelta = Double.MAX_VALUE;
     double chosenArea = Double.MAX_VALUE;
     long childId = -1;
-    for (Child child : children) {
+    for (Child child : (Collection<Child>)children) {
       MBR unionBounds = bounds.union(child.bounds);
       double childArea = child.bounds.area();
       double delta = unionBounds.area() - childArea;

@@ -80,8 +80,8 @@ public class RTreeUnitTest {
           .macro(node.capture())
           .execute();
       assertEquals("node has one child", 1, node.get().count());
-      assertEquals(oneBounds, node.get().children.get(0).bounds);
-      assertEquals(1, node.get().children.get(0).id);
+      assertEquals(oneBounds, ((Child)node.get().children.get(0)).bounds);
+      assertEquals(1, ((Child)node.get().children.get(0)).id);
     }
 
     // Create a full root node

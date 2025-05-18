@@ -1,6 +1,7 @@
 package com.rpl.rama.helpers.spatial;
 
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -79,7 +80,7 @@ public class NonLeafNode extends Node {
   }
 
   public List<String> dotEdges() {
-    return children
+    return ((Collection<Child>)children)
       .stream()
       .map((Child child) ->
 	   "" + id + " -> " + child.id

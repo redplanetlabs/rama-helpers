@@ -19,6 +19,7 @@ import com.rpl.rama.RamaSerializable;
 import com.rpl.rama.RamaModule.Topologies;
 import com.rpl.rama.helpers.ModuleUniqueIdPState;
 import com.rpl.rama.helpers.RamaAssert;
+import com.rpl.rama.helpers.spatial.Vector;
 import com.rpl.rama.module.MicrobatchTopology;
 import com.rpl.rama.ops.Ops;
 import com.rpl.rama.ops.OutputCollector;
@@ -671,7 +672,7 @@ public class RTree implements RamaSerializable {
     return l.get(0);
   }
 
-  private static <T> List<T> restList(List<T> l) {
+  private static List<Object> restList(List<Object> l) {
     l.remove(0);
     return l;
   }
@@ -717,11 +718,6 @@ public class RTree implements RamaSerializable {
     into = (Var) Clojure.var("clojure.core", "into");
   }
 
-  private static PersistentVector addAllVec(PersistentVector l1,
-                                            List l2) {
-    return (PersistentVector)into.invoke(l1, l2);
-  }
-
   private Block verify(final String rootVar, final String outVar) {
     return Block
         .loopWithVars(
@@ -743,10 +739,10 @@ public class RTree implements RamaSerializable {
                     .var("*childrenNodes", "*emptyChildrenNodes"),
                     Block
                     .ifTrue(
-                      new Expr(RTree::isEmptyList, "*children"),
+                      new Expr(PersistentVector::isEmpty, "*children"),
                       Block.emitLoop("*totalBounds", "*childrenNodes"),
                       Block
-                      .each(RTree::firstList, "*children").out("*child")
+                      .each(Vector::peek, "*children").out("*child")
                       .macro(RamaAssert.assertMacro(Child::isChild, "*child"))
                       .macro(extractJavaFields("*child", "*bounds", "*id"))
                       .macro(readNode("*id", "*childNode"))
@@ -762,12 +758,13 @@ public class RTree implements RamaSerializable {
                                    "*bounds",
                                    " node union bounds: ",
                                    "*childBounds")))
-                      .continueLoop(
-                        new Expr(RTree::<Node>restList, "*children"),
-                        new Expr(MBR::union, "*totalBounds", "*bounds"),
-                        new Expr(RTree::conjList,
-                                 "*childrenNodes",
-                                 "*childNode"))))
+                      .continueLoop(new Expr(Vector::pop, "*children"),
+				    new Expr(MBR::union,
+					     "*totalBounds",
+					     "*bounds"),
+				    new Expr(RTree::conjList,
+					     "*childrenNodes",
+					     "*childNode"))))
                   .out("*totalBounds", "*childrenNodes")
                   .ifTrue(
                     new Expr(Ops.NOT_EQUAL, "*totalBounds", "*bounds"),
@@ -1069,7 +1066,7 @@ public class RTree implements RamaSerializable {
                     .each(RTreeCollector.AddObject::mkAddObject,
                           "*newBounds",
                           "*newId").out("*newOp")
-                    .each(RTree::<Node>restList, "*siblings").out("*remaining")
+                    .each(RTree::restList, "*siblings").out("*remaining")
                     .each(Ops.LOG_ERROR, LOGGER,
                           new Expr(Ops.TO_STRING, "Ops: ", "*ops", " ", new Expr(Ops.CLASS, "*ops")))
                     .each(Ops.LOG_ERROR, LOGGER,
@@ -1103,8 +1100,8 @@ public class RTree implements RamaSerializable {
                       // add new sibling nodes
                       Path
                       .key("*parentId")
-                      .nullToVal(new Expr(RTree::emptyVec))
-                      .term(RTree::addAllVec, "*newOps"))))
+                      .nullToVal(new Expr(Vector::empty))
+                      .term(Vector::into, "*newOps"))))
                 .localSelect(nodeChangeTableVar, Path.stay()).out("*nnn")
                 .each(Ops.LOG_DEBUG,
                       LOGGER,
