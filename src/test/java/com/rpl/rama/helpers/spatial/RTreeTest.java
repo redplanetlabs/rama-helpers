@@ -394,7 +394,7 @@ public class RTreeTest {
 
     try(InProcessCluster cluster = InProcessCluster.create()) {
       final RamaModule module = new Module();
-      cluster.launchModule(module, new LaunchConfig(2, 1));
+      cluster.launchModule(module, new LaunchConfig(4, 3));
 
       final Depot depot = cluster.clusterDepot(Module.class.getName(), "*depot");
       final PState nodes = cluster.clusterPState(Module.class.getName(), "$$test__nodes");
