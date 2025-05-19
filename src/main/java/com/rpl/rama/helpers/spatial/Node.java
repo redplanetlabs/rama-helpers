@@ -47,6 +47,10 @@ public abstract class Node implements INode, RamaSerializable {
     return children;
   }
 
+  public Child child(int i) {
+    return (Node)children.get(i);
+  }
+
   public int numFreeEdges(int branchingFactor) {
     return branchingFactor - children.size();
   }

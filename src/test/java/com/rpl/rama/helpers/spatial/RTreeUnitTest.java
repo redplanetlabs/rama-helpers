@@ -80,8 +80,8 @@ public class RTreeUnitTest {
           .macro(node.capture())
           .execute();
       assertEquals("node has one child", 1, node.get().count());
-      assertEquals(oneBounds, ((Child)node.get().children.get(0)).bounds);
-      assertEquals(1, ((Child)node.get().children.get(0)).id);
+      assertEquals(oneBounds, node.get().child(0).bounds);
+      assertEquals(1, node.get().child(0).id);
     }
 
     // Create a full root node
@@ -100,10 +100,10 @@ public class RTreeUnitTest {
           .macro(node.capture())
           .execute();
       assertEquals("node has two child", 2, node.get().count());
-      assertEquals(twoBounds, node.get().children.get(0).bounds);
-      assertEquals(oneBounds, node.get().children.get(1).bounds);
-      assertEquals(1, node.get().children.get(1).id);
-      assertEquals(2, node.get().children.get(0).id);
+      assertEquals(twoBounds, node.get().child(0).bounds);
+      assertEquals(oneBounds, node.get().child(1).bounds);
+      assertEquals(1, node.get().child(1).id);
+      assertEquals(2, node.get().child(0).id);
     }
 
     // Create an over full root node, requiring a split
@@ -124,10 +124,10 @@ public class RTreeUnitTest {
           .execute();
       assertEquals("a new sibling created", 1, newSiblings.get().size());
       assertEquals("node has two child", 2, node.get().count());
-      assertEquals(oneBounds, node.get().children.get(0).bounds);
-      assertEquals(twoBounds, node.get().children.get(1).bounds);
-      assertEquals(3, node.get().children.get(0).id);
-      assertEquals(2, node.get().children.get(1).id);
+      assertEquals(oneBounds, node.get().child(0).bounds);
+      assertEquals(twoBounds, node.get().child(1).bounds);
+      assertEquals(3, node.get().child(0).id);
+      assertEquals(2, node.get().child(1).id);
     }
 
     // Create an over full root node, requiring two new nodes
@@ -149,10 +149,10 @@ public class RTreeUnitTest {
           .execute();
       assertEquals("two new siblings created", 2, newSiblings.get().size());
       assertEquals("node has two child", 2, node.get().count());
-      assertEquals(twoBounds, node.get().children.get(0).bounds);
-      assertEquals(twoBounds, node.get().children.get(1).bounds);
-      assertEquals(5, node.get().children.get(0).id);
-      assertEquals(4, node.get().children.get(1).id);
+      assertEquals(twoBounds, node.get().child(0).bounds);
+      assertEquals(twoBounds, node.get().child(1).bounds);
+      assertEquals(5, node.get().child(0).id);
+      assertEquals(4, node.get().child(1).id);
     }
   }
 

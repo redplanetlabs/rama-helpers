@@ -57,6 +57,10 @@ public class RTreeTest {
 
       MicrobatchTopology m = topologies.microbatch("m");
       m.pstate("$$object", PState.mapSchema(Long.class, Object.class));
+
+      // This is just a test convenience
+      m.pstate("$$objectLookup", PState.mapSchema(Object.class, Long.class));
+
       idGenerator.declarePState(m);
 
       // declare the RTree
@@ -75,17 +79,20 @@ public class RTreeTest {
             Block
             .each(Ops.LOG_ERROR, LOGGER, "New Microbatch")
             .explodeMicrobatch("*microbatch").out("*v")
-            .each(Ops.LOG_ERROR,
-                  LOGGER,
-                  new Expr(Ops.TO_STRING, "MB Process ", "*v"))
             .macro(idGenerator.genId("*objectId"))
+            .macro(extractJavaFields("*v", "*bounds", "*object"))
             .each(Ops.LOG_ERROR,
                   LOGGER,
-                  new Expr(Ops.TO_STRING, "ObjectId ", "*objectId"))
-            .macro(extractJavaFields("*v", "*bounds", "*object"))
+                  new Expr(Ops.TO_STRING,
+			   "objectId=", "*objectId",
+			   ", MB Process: ", "*v"))
             .hashPartition("$$object", "*objectId")
             .localTransform("$$object",
                             Path.key("*objectId").termVal("*object"))
+
+	    .hashPartition("$$objectLookup", "*object")
+	    .localTransform("$$objectLookup",
+                            Path.key("*object").termVal("*objectId"))
             .each(Ops.PRINTLN,
                   "Added object",
                   "*objectId",
@@ -103,6 +110,7 @@ public class RTreeTest {
                     (MBR)data.get(0),
                     (Long)data.get(1));}));
     }
+
   }
 
 
@@ -386,12 +394,13 @@ public class RTreeTest {
 
     try(InProcessCluster cluster = InProcessCluster.create()) {
       final RamaModule module = new Module();
-      cluster.launchModule(module, new LaunchConfig(1, 1));
+      cluster.launchModule(module, new LaunchConfig(2, 1));
 
       final Depot depot = cluster.clusterDepot(Module.class.getName(), "*depot");
       final PState nodes = cluster.clusterPState(Module.class.getName(), "$$test__nodes");
       final PState root = cluster.clusterPState(Module.class.getName(), "$$test__root");
       final PState object = cluster.clusterPState(Module.class.getName(), "$$object");
+      final PState objectLookup = cluster.clusterPState(Module.class.getName(), "$$objectLookup");
       final QueryTopologyClient q = cluster.clusterQuery(Module.class.getName(), "objectsInBounds");
       final QueryTopologyClient<Boolean> verify
         = cluster.clusterQuery(Module.class.getName(), "verifyTree");
@@ -428,13 +437,23 @@ public class RTreeTest {
 
       LOGGER.error("Checking objects");
 
+      ArrayList<Long> objectIds = new ArrayList<>();
+
+      for (int i = 0; i < numObjects ; i++) {
+	LOGGER.error("XX "+ i + " " + objectLookup.selectOne(Path.key(new Long(i))));
+	objectIds.add(objectLookup.selectOne(Path.key(new Long(i))));
+      }
+
       for (int i = 0; i < numObjects ; i++) {
           RandomObject robject = objects.get(i);
           ArrayList<Long> foundObjects
             = new ArrayList<>((List<Long>) q.invoke(robject.bounds));
 
-          System.out.println("Found "+foundObjects+" for " + robject);
-          assertTrue(foundObjects.contains(robject.id));
+          System.out.println("Found "+foundObjects+
+			     " for " + robject +
+			     " i=" + i +
+			     " objectId=" + objectIds.get(i));
+          assertTrue(foundObjects.contains(objectIds.get(i)));
         }
     }
 
