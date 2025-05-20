@@ -624,31 +624,51 @@ public class RTree implements RamaSerializable {
     final RTreeConvertorFunction<T> dataConvertor,
     final String modTableVar) {
     return Block
-      .each(Ops.LOG_DEBUG, LOGGER, "handleModifications")
-      .macro(rootNode("*rootNode"))
-      .macro(explode(microbatchVar, "*data"))
-      .each(Ops.PRINTLN, "DATA", "*data")
-      .each((T data, OutputCollector collector) -> {
-          RTreeCollector c = new RTreeCollector(collector);
-          dataConvertor.invoke(data, c);
-        },
-        "*data").out("*modification")
+        .each(Ops.LOG_DEBUG, LOGGER, "buildModTable")
+        .macro(rootNode("*rootNode"))
+        .macro(explode(microbatchVar, "*data"))
+        .each(Ops.PRINTLN, "DATA", "*data")
+        .each((T data, OutputCollector collector) -> {
+            RTreeCollector c = new RTreeCollector(collector);
+            dataConvertor.invoke(data, c);
+          },
+          "*data").out("*modification")
 
-      .each(Ops.PRINTLN, "Modification", "*modification")
-      .macro(extractJavaFields("*modification", "*bounds", "*objectId"))
-      // Find the node where this would be located
-      // TODO parallel descent?
-      .macro(chooseLeaf("*rootNode",
-                        "*bounds",
-                        "*chosenNode"))
-      .macro(RamaAssert.assertMacro((Node v) -> {return v != null; },
-                                    "*chosenNode"))
-      // NOTE assumes chooseLeaf emits on *node's partition
-      .directPartition("*taskId")
-      .compoundAgg(
-        CompoundAgg.map(
-          new Expr(Node::nodeId, "*chosenNode"),
-          Agg.list("*modification"))).out(modTableVar);
+        .each(Ops.PRINTLN, "Modification", "*modification")
+        .macro(extractJavaFields("*modification", "*bounds", "*objectId"))
+        // Find the node where this would be located
+        // TODO parallel descent?
+        .macro(chooseLeaf("*rootNode", "*bounds", "*chosenNode"))
+        .macro(RamaAssert.assertMacro((Node v) -> {return v != null; },
+                                      "*chosenNode"))
+        // NOTE assumes chooseLeaf emits on *node's partition
+        .directPartition("*taskId")
+        .compoundAgg(
+          CompoundAgg.map(
+            new Expr(Node::nodeId, "*chosenNode"),
+            Agg.list("*modification"))).out(modTableVar);
+  }
+
+  private Block hasMoreModesPred(final String modTableVar,
+                                 final String moreOpsVar) {
+    return Block
+        .batchBlock(
+          Block
+          .allPartition()
+          .localSelect(modTableVar, Path.stay()).out("*elems")
+          .each(Ops.SIZE, "*elems").out("*size")
+          .each(Ops.LOG_DEBUG,
+                LOGGER,
+                new Expr(Ops.TO_STRING,
+                         "size: ", "*size",
+                         ", elems: ", "*elems"))
+          .globalPartition()
+          .agg(Agg.max("*size")).out("$$maxSize"))
+        .localSelect("$$maxSize", Path.stay()).out("*maxSize")
+        .each(Ops.LOG_DEBUG,
+              LOGGER,
+              new Expr(Ops.TO_STRING, "maxSize: ", "*maxSize"))
+        .each(Ops.IDENTITY, new Expr(Ops.EQUAL, 0, "*maxSize")).out(moreOpsVar);
   }
 
   public <T> Block handleModifications(
@@ -656,6 +676,7 @@ public class RTree implements RamaSerializable {
     final RTreeConvertorFunction<T> dataConvertor) {
 
     return Block
+        .each(Ops.LOG_DEBUG, LOGGER, "handleModifications")
         .each(Ops.CURRENT_TASK_ID).out("*taskId")
         .batchBlock(Block.macro(buildModTable(microbatchVar,
                                               dataConvertor,
@@ -666,24 +687,9 @@ public class RTree implements RamaSerializable {
           Block
           .yieldIfOvertime()
           .each(Ops.LOG_DEBUG, LOGGER, "handleModifications loop body start")
-          .batchBlock(
-            Block
-            .allPartition()
-            .localSelect("$$modTable", Path.stay()).out("*elems")
-            .each(Ops.SIZE, "*elems").out("*size")
-            .each(Ops.LOG_DEBUG,
-                  LOGGER,
-                  new Expr(Ops.TO_STRING,
-                           "size: ", "*size",
-                           ", elems: ", "*elems"))
-            .globalPartition()
-            .agg(Agg.max("*size")).out("$$maxSize"))
-          .localSelect("$$maxSize", Path.stay()).out("*maxSize")
-          .each(Ops.LOG_DEBUG,
-                LOGGER,
-                new Expr(Ops.TO_STRING, "maxSize: ", "*maxSize"))
+          .macro(hasMoreModesPred("$$modTable", "*hasMoreOps"))
           .ifTrue(
-            new Expr(Ops.EQUAL, 0, "*maxSize"),
+            "*hasMoreOps",
             // Nothing left to do, all modifications handled.
             Block
             .each(Ops.LOG_DEBUG, LOGGER, "Operations loop complete, emitting")
