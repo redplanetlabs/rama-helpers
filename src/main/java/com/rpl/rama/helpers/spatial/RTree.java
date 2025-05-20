@@ -671,6 +671,26 @@ public class RTree implements RamaSerializable {
         .each(Ops.IDENTITY, new Expr(Ops.EQUAL, 0, "*maxSize")).out(moreOpsVar);
   }
 
+  private Block lookupNode(final String rootTaskIdVar,
+                           final String nodeIdVar,
+                           final String nodeVar) {
+    final String tmpNodeVar = Helpers.genVar("node");
+    return Block
+        .macro(readNode(nodeIdVar, tmpNodeVar))
+        .ifTrue(
+          new Expr(Ops.IS_NULL, tmpNodeVar),
+          Block.directPartition(rootTaskIdVar).macro(rootNode(nodeVar)),
+          Block.each(Ops.IDENTITY, tmpNodeVar).out(nodeVar))
+        .each(Ops.LOG_DEBUG, LOGGER,
+              new Expr(Ops.TO_STRING,
+                       "lookup nodeId: ", nodeIdVar, ", node: ", nodeVar))
+        .macro(
+          RamaAssert.assertMacro(
+            Ops.EQUAL,
+            nodeIdVar,
+            new Expr(Node::nodeId, nodeVar)));
+  }
+
   public <T> Block handleModifications(
     final String microbatchVar,
     final RTreeConvertorFunction<T> dataConvertor) {
@@ -705,28 +725,13 @@ public class RTree implements RamaSerializable {
               .each(Ops.FIRST, "*nodeOps").out("*opNodeId")
               .each(Ops.LAST, "*nodeOps").out("*nodeOpsList")
 
-              .macro(readNode("*opNodeId", "*nodesNode"))
-              .ifTrue(
-                new Expr(Ops.IS_NULL, "*nodesNode"),
-                // TODO add assert that the root node has the correct node id
-                Block.directPartition("*taskId").macro(rootNode("*currentNode")),
-                Block.each(Ops.IDENTITY, "*nodesNode").out("*currentNode"))
-              .each(Ops.LOG_DEBUG,
-                    LOGGER,
-                    new Expr(Ops.TO_STRING,
-                             "opNodeId: ", "*opNodeId",
-                             ", nodesNode: ", "*nodesNode"))
+              .macro(lookupNode("*taskId", "*opNodeId", "*currentNode"))
               .each(Ops.LOG_DEBUG,
                     LOGGER,
                     new Expr(Ops.TO_STRING, "node: ", "*currentNode"))
               .each(Ops.LOG_DEBUG,
                     LOGGER,
                     new Expr(Ops.TO_STRING, "nodeOpsList: ", "nodeOpsList"))
-              // .macro(
-              //   RamaAssert.assertMacro(
-              //     Ops.EQUAL,
-              //     "*opNodeId",
-              //     new Expr(Node::nodeId, "*currentNode")))
               .macro(updateNode(M,
                                 idGenerator,
                                 "*currentNode",
