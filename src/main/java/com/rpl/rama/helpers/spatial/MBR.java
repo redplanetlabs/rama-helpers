@@ -369,6 +369,31 @@ public class MBR implements RamaSerializable {
   }
 
   /**
+   * Determines if this MBR contains other MBR.
+   *
+   * @param other The other MBR
+   * @return true if the MBRs contains, false otherwise
+   * @throws IllegalArgumentException If the other MBR has a different number of dimensions
+   */
+  public boolean contains(MBR other) {
+    assert hasSameDimensions(other) : "MBR dimensions must match";
+
+    if (isEmpty() || other.isEmpty()) {
+      return false;
+    }
+
+    for (int i = 0; i < mins.length; i++) {
+      if (maxs[i] < other.maxs[i] ||
+	  mins[i] > other.mins[i]) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+
+  /**
    * Calculates the amount of overlap between this MBR and another MBR.
    *
    * @param other The other MBR
@@ -483,7 +508,7 @@ public class MBR implements RamaSerializable {
    * @return true if the other MBR is fully contained in this MBR, false otherwise
    * @throws IllegalArgumentException If the other MBR has a different number of dimensions
    */
-  public boolean contains(MBR other) {
+  public boolean containsBounds(MBR other) {
     assert hasSameDimensions(other) : "MBR dimensions must match";
     if (isEmpty() || other.isEmpty()) {
       return false;

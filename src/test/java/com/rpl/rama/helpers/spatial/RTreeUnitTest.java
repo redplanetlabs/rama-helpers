@@ -39,12 +39,12 @@ public class RTreeUnitTest {
     try (TestPState objectId = TestPState.create(Long.class)) {
       Block
           .each(Ops.IDENTITY, objectId).out("$$objectId")
-          .each(Ops.IDENTITY, rootNode).out("*node")
+          .each(Ops.IDENTITY, rootNode).out("*tNode")
           .each(Ops.IDENTITY, ops).out("*nodeOps")
           .macro(RTree.updateNode(
             branchingFactor,
             idGenerator,
-            "*node",
+            "*tNode",
             "*nodeOps",
             "*newSiblings"))
           .execute();
@@ -62,7 +62,7 @@ public class RTreeUnitTest {
     final MBR twoBounds = new MBR(origin, twos);
     final MBR twoHundredBounds = new MBR(oneHundreds, twoHundreds);
 
-    VarRef<Node> node = new VarRef<>("*node");
+    VarRef<Node> node = new VarRef<>("*tNode");
     VarRef<List<Node>> newSiblings = new VarRef<>("*newSiblings");
 
     // Create a root node with one child
