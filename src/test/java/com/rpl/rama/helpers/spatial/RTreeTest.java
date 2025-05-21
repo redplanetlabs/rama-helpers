@@ -84,14 +84,14 @@ public class RTreeTest {
             .each(Ops.LOG_ERROR,
                   LOGGER,
                   new Expr(Ops.TO_STRING,
-			   "objectId=", "*objectId",
-			   ", MB Process: ", "*v"))
+                           "objectId=", "*objectId",
+                           ", MB Process: ", "*v"))
             .hashPartition("$$object", "*objectId")
             .localTransform("$$object",
                             Path.key("*objectId").termVal("*object"))
 
-	    .hashPartition("$$objectLookup", "*object")
-	    .localTransform("$$objectLookup",
+            .hashPartition("$$objectLookup", "*object")
+            .localTransform("$$objectLookup",
                             Path.key("*object").termVal("*objectId"))
             .each(Ops.PRINTLN,
                   "Added object",
@@ -222,8 +222,8 @@ public class RTreeTest {
         assertEquals(2, rootNode.count());
         {
           final Object[] children
-	    = ((Collection<Child>)rootNode.children)
-	    .stream().map(Child::childId).toArray();
+            = ((Collection<Child>)rootNode.children)
+            .stream().map(Child::childId).toArray();
           assertArrayEquals(new Object[] { 0L, 1L }, children);
         }
         assertEquals(allBounds, rootNode.bounds());
@@ -234,8 +234,8 @@ public class RTreeTest {
         assertEquals(2, childNode0.count());
         {
           final Object[] children
-	    = ((Collection<Child>)childNode0.children)
-	    .stream().map(Child::childId).toArray();
+            = ((Collection<Child>)childNode0.children)
+            .stream().map(Child::childId).toArray();
           assertArrayEquals(new Object[] { 0L, 1L }, children);
         }
         assertEquals(twoBounds, childNode0.bounds());
@@ -246,8 +246,8 @@ public class RTreeTest {
         assertEquals(1, childNode1.count()); // object 2
         {
           final Object[] children
-	    = ((Collection<Child>)childNode1.children)
-	    .stream().map(Child::childId).toArray();
+            = ((Collection<Child>)childNode1.children)
+            .stream().map(Child::childId).toArray();
           assertArrayEquals(new Object[] { 2L }, children);
         }
         assertEquals(twoHundredBounds, childNode1.bounds());
@@ -328,12 +328,12 @@ public class RTreeTest {
 
         LOGGER.error("Multi Dump");
         dump.invoke();
-	List<String> elements = dumpDot.invoke();
-	System.out.println("digraph G {");
-	for (String s : elements) {
-	  System.out.println(s);
-	}
-	System.out.println("}");
+        List<String> elements = dumpDot.invoke();
+        System.out.println("digraph G {");
+        for (String s : elements) {
+          System.out.println(s);
+        }
+        System.out.println("}");
 
         LOGGER.error("Verify " + verify.invoke());
 
@@ -365,9 +365,9 @@ public class RTreeTest {
   }
 
   private static List<RandomObject> generateObjects(
+    final Random random,
     final MBR bounds,
     final int numObjects) {
-    Random random = new Random();
     List<RandomObject> objects = new ArrayList<RandomObject>();
     for (long i = 0; i < numObjects; i++) {
       boolean isIntersect = random.nextBoolean();
@@ -387,10 +387,13 @@ public class RTreeTest {
   @Test
   public void uncoordinatedTest() throws Exception {
     LOGGER.debug("uncoordinatedTest");
+    long seed = new Random().nextLong();
+    LOGGER.debug("uncoordinatedTest seed: " + seed);
+    Random random = new Random(seed);
 
     final MBR bounds = new MBR(new double[]{0,0}, new double[]{100,1000});
     final int numObjects = 20;
-    List<RandomObject> objects = generateObjects(bounds, numObjects);
+    List<RandomObject> objects = generateObjects(random, bounds, numObjects);
 
     try(InProcessCluster cluster = InProcessCluster.create()) {
       final RamaModule module = new Module();
@@ -429,7 +432,7 @@ public class RTreeTest {
       List<String> elements = dumpDot.invoke();
       System.out.println("digraph G {");
       for (String s : elements) {
-	System.out.println(s);
+        System.out.println(s);
       }
       System.out.println("}");
 
@@ -440,8 +443,8 @@ public class RTreeTest {
       ArrayList<Long> objectIds = new ArrayList<>();
 
       for (int i = 0; i < numObjects ; i++) {
-	LOGGER.error("XX "+ i + " " + objectLookup.selectOne(Path.key(new Long(i))));
-	objectIds.add(objectLookup.selectOne(Path.key(new Long(i))));
+        LOGGER.error("XX "+ i + " " + objectLookup.selectOne(Path.key(new Long(i))));
+        objectIds.add(objectLookup.selectOne(Path.key(new Long(i))));
       }
 
       for (int i = 0; i < numObjects ; i++) {
@@ -450,9 +453,9 @@ public class RTreeTest {
             = new ArrayList<>((List<Long>) q.invoke(robject.bounds));
 
           System.out.println("Found "+foundObjects+
-			     " for " + robject +
-			     " i=" + i +
-			     " objectId=" + objectIds.get(i));
+                             " for " + robject +
+                             " i=" + i +
+                             " objectId=" + objectIds.get(i));
           assertTrue(foundObjects.contains(objectIds.get(i)));
         }
     }

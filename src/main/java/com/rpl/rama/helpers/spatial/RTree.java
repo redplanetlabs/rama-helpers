@@ -237,6 +237,43 @@ public class RTree implements RamaSerializable {
       .localTransform(rootPstate, Path.termVal(nodeVar));
   }
 
+  private static PersistentVector allChildren(
+    final Node currentNode,
+    final List<RTreeCollector.AddObject> nodeOps) {
+    return
+        nodeOps
+        .stream()
+        .reduce(currentNode.children,
+                (PersistentVector childVec, RTreeCollector.AddObject op) ->
+                Vector.conj(childVec, new Child(op.bounds, op.objectId)),
+                (PersistentVector c1, PersistentVector c2) ->
+                Vector.into(c1, c2));
+  }
+
+  private  PersistentVector groupChildren(
+    final PersistentVector children) {
+    LOGGER.debug("groupChildren: " + children.getClass().getName() + " " + children.toString());
+    return Vector.partitionAll(M, children);
+  }
+
+  private static Object updateNodeChildren(Node node,
+                                           List<Node>newSiblings,
+                                           PersistentVector groupedChildren) {
+    LOGGER.error("updateNodeChildren size: " +
+                 newSiblings.size() + ", " +
+                 groupedChildren.size());
+    node.children = Vector.into(Vector.empty(), (List)groupedChildren.get(0));
+    LOGGER.error("size: "+ newSiblings.size() + ", " + groupedChildren.size());
+    for (int i=0; i< newSiblings.size(); ++i) {
+      Node currentNode = newSiblings.get(i);
+      LOGGER.error("i: "+ i);
+      PersistentVector children = Vector.into(Vector.empty(),
+                                              (List)groupedChildren.get(i + 1));
+      currentNode.children = children;
+    }
+    return null;
+  }
+
   /** Perform all operations from nodeOpsVar on nodeVar.
 
       This does not persist the updated node, or the new siblings.
@@ -244,7 +281,7 @@ public class RTree implements RamaSerializable {
       newSiblingIdVar will contain any new sibling nodes that have been created.
    */
 
-  protected static Block updateNode(
+  protected Block updateNode(
     final int branchingFactor,
     final ModuleUniqueIdPState idGenerator,
     final String nodeVar,
@@ -259,64 +296,101 @@ public class RTree implements RamaSerializable {
               new Expr(Ops.TO_STRING, "updateNode ", nodeVar, " ", nodeOpsVar))
         // NOTE - this is a temp var to avoid an array list literal in the Loop
         // var, which causes it to use the object cache.
+        .each(RTree::allChildren, nodeVar, nodeOpsVar).out("*allChildren")
+        .each(RTree::groupChildren, this, "*allChildren").out("*groupedChildren")
+        // Create as many siblings as needed.
         .each(RTreeHelpers::newArrayList).out("*emptySiblings")
-        .each(Ops.LOG_DEBUG, LOGGER, "before loop")
+        .each(Ops.IDENTITY,
+              new Expr(Ops.SIZE, "*groupedChildren")).out("*numGroups")
+        .each(Ops.LOG_DEBUG, LOGGER,
+              new Expr(Ops.TO_STRING, "groupedChildren size: ", "*numGroups"))
         .loopWithVars(
           LoopVars
-          .var("*currentNode", nodeVar)
-          .var("*nodeOpsRemaining", nodeOpsVar)
-          .var("*siblings", "*emptySiblings"),
+          .var("*numNewSiblings", new Expr( Ops.DEC, "*numGroups"))
+          .var("*siblings", new Expr(RTreeHelpers::newArrayList)),
           Block
-          .yieldIfOvertime()
-          .each(Ops.LOG_DEBUG,
-                LOGGER,
-                new Expr(Ops.TO_STRING,
-                         "start of loop, current node", "*currentNode"))
-          .each(Ops.LOG_DEBUG,
-                LOGGER,
-                new Expr(Ops.TO_STRING,
-                         "start of loop, opsRemaining", "*nodeOpsRemaining"))
           .ifTrue(
-            new Expr(Ops.AND,
-                     new Expr(Node::isFull, "*currentNode", branchingFactor),
-                     new Expr(Ops.NOT,
-                              new Expr(APersistentVector::isEmpty,
-                                       "*nodeOpsRemaining"))),
+            new Expr(Ops.LESS_THAN_OR_EQUAL, "*numNewSiblings", 0),
             Block
-            .each(Ops.LOG_DEBUG, LOGGER, "Needs split block")
+            .each(Ops.LOG_DEBUG, LOGGER,
+                  new Expr(Ops.TO_STRING, "updateNode emitting"))
+            .emitLoop("*siblings"),
+            Block
+            .each(Ops.LOG_DEBUG, LOGGER,
+                  new Expr(Ops.TO_STRING,
+                           "numNewSiblings: ", "*numNewSiblings",
+                           " size: ", new Expr(Ops.SIZE, "*siblings")))
             .macro(idGenerator.genId("*newNodeId"))
             .each(Node::newSibling,
                   "*currentNode",
                   "*newNodeId").out("*newNode")
-            .each((final List<Node> l, final Node node) -> {
-                l.add(node);
-                return l;
-            },
-              "*siblings",
-              "*newNode")
-            .continueLoop("*newNode",
-                          "*nodeOpsRemaining",
-                          "*siblings")
-            ,
-            Block
-            .each(Ops.LOG_DEBUG, LOGGER, "no split block")
-            .each(List<Node>::size, "*nodeOpsRemaining").out("*opCount")
-            .ifTrue(new Expr(Ops.EQUAL, "*opCount", 0),
-                    Block
-                    .each(Ops.LOG_DEBUG, LOGGER, "Emitting")
-                    .emitLoop("*siblings"),
-                    Block
-                    .each(Ops.LOG_DEBUG, LOGGER, "more ops")
-                    .each(APersistentVector::peek,
-                          "*nodeOpsRemaining").out("*nodeOp")
-                    .macro(extractJavaFields("*nodeOp", "*bounds", "*objectId"))
-                    .each(Node::add, "*currentNode", "*bounds", "*objectId")
-                    .each(APersistentVector::pop,
-                          "*nodeOpsRemaining").out("*nodeOpsRemaining")
-                    .continueLoop("*currentNode",
-                                  "*nodeOpsRemaining",
-                                  "*siblings"))
-                  )).out(newSiblingsVar)
+            .each(RTree::conjList, "*siblings","*newNode")
+            .continueLoop(new Expr(Ops.DEC, "*numNewSiblings"),
+                          "*siblings"))).out(newSiblingsVar)
+
+        // Stuff the original node and siblings using the sorted children.
+        .each(RTree::updateNodeChildren,
+              nodeVar,
+              newSiblingsVar,
+              "*groupedChildren")
+
+        // .each(RTreeHelpers::newArrayList).out("*emptySiblings")
+        // .each(Ops.LOG_DEBUG, LOGGER, "before loop")
+        // .loopWithVars(
+        //   LoopVars
+        //   .var("*currentNode", nodeVar)
+        //   .var("*nodeOpsRemaining", nodeOpsVar)
+        //   .var("*siblings", "*emptySiblings"),
+        //   Block
+        //   .yieldIfOvertime()
+        //   .each(Ops.LOG_DEBUG,
+        //         LOGGER,
+        //         new Expr(Ops.TO_STRING,
+        //                  "start of loop, current node", "*currentNode"))
+        //   .each(Ops.LOG_DEBUG,
+        //         LOGGER,
+        //         new Expr(Ops.TO_STRING,
+        //                  "start of loop, opsRemaining", "*nodeOpsRemaining"))
+        //   .ifTrue(
+        //     new Expr(Ops.AND,
+        //              new Expr(Node::isFull, "*currentNode", branchingFactor),
+        //              new Expr(Ops.NOT,
+        //                       new Expr(APersistentVector::isEmpty,
+        //                                "*nodeOpsRemaining"))),
+        //     Block
+        //     .each(Ops.LOG_DEBUG, LOGGER, "Needs split block")
+        //     .macro(idGenerator.genId("*newNodeId"))
+        //     .each(Node::newSibling,
+        //           "*currentNode",
+        //           "*newNodeId").out("*newNode")
+        //     .each((final List<Node> l, final Node node) -> {
+        //         l.add(node);
+        //         return l;
+        //     },
+        //       "*siblings",
+        //       "*newNode")
+        //     .continueLoop("*newNode",
+        //                   "*nodeOpsRemaining",
+        //                   "*siblings")
+        //     ,
+        //     Block
+        //     .each(Ops.LOG_DEBUG, LOGGER, "no split block")
+        //     .each(List<Node>::size, "*nodeOpsRemaining").out("*opCount")
+        //     .ifTrue(new Expr(Ops.EQUAL, "*opCount", 0),
+        //             Block
+        //             .each(Ops.LOG_DEBUG, LOGGER, "Emitting")
+        //             .emitLoop("*siblings"),
+        //             Block
+        //             .each(Ops.LOG_DEBUG, LOGGER, "more ops")
+        //             .each(APersistentVector::peek,
+        //                   "*nodeOpsRemaining").out("*nodeOp")
+        //             .macro(extractJavaFields("*nodeOp", "*bounds", "*objectId"))
+        //             .each(Node::add, "*currentNode", "*bounds", "*objectId")
+        //             .continueLoop(
+        //               "*currentNode",
+        //               new Expr(APersistentVector::pop, "*nodeOpsRemaining"),
+        //               "*siblings"))
+        //           )).out(newSiblingsVar)
         .each(Ops.LOG_DEBUG,
               LOGGER,
               new Expr(Ops.TO_STRING,
@@ -704,7 +778,6 @@ public class RTree implements RamaSerializable {
                 .macro(writeNode("*nodeId", nodeVar)));
   }
 
-
   public <T> Block handleModifications(
     final String microbatchVar,
     final RTreeConvertorFunction<T> dataConvertor) {
@@ -732,7 +805,7 @@ public class RTree implements RamaSerializable {
             Block
             .batchBlock(
               Block
-              .localSelect("$$modTable", Path.all()).out("*nodeOps")
+              .localSelect("$$modTable", Path.first()).out("*nodeOps")
               .each(Ops.LOG_DEBUG,
                     LOGGER,
                     new Expr(Ops.TO_STRING, "nodeOps: ", "*nodeOps"))
@@ -776,8 +849,14 @@ public class RTree implements RamaSerializable {
                               .each(Node::add,
                                     "*parent",
                                     "*nodeBounds",
-                                    "*nodeId")
-                              .hashPartition("*taskId")
+                                    "*nodeId").out("*fred")
+                              .each(Ops.LOG_DEBUG, LOGGER,
+                                    "new root created")
+                              .each(Ops.LOG_DEBUG, LOGGER,
+                                    new Expr(Ops.TO_STRING,
+                                             "new root created, taskId: ",
+                                             "*taskId"))
+                              .directPartition("*taskId")
                               .each(Ops.LOG_DEBUG, LOGGER,
                                     new Expr(Ops.TO_STRING,
                                              "Write new root: ", "*parent"))
@@ -797,6 +876,8 @@ public class RTree implements RamaSerializable {
                     LOGGER,
                     new Expr(Ops.TO_STRING, "parent node: ", "*parent"))
 
+              .each(Node::nodeId, "*currentNode").out("*nodeId")
+              .macro(writeNode("*nodeId", "*currentNode"))
               .macro(saveAndOps("*newSiblings", "*newOps"))
               .directPartition("*taskId")
               .macro(updateModTable("$$modTable",
@@ -836,8 +917,7 @@ public class RTree implements RamaSerializable {
                   .each(Ops.LOG_DEBUG,
                         LOGGER,
                         new Expr(Ops.TO_STRING,
-                                 "Saving sibling: ", "*newId",
-                                 " ", "*newSibling"))
+                                 "Saving sibling: ", "*newSibling"))
                   .macro(writeNode("*newId", "*newSibling"))
                   .each(RTreeCollector.AddObject::mkAddObject,
                         "*newBounds",
