@@ -108,7 +108,7 @@ public abstract class Node implements INode, RamaSerializable {
       Child child = (Child)children.get(i);
       if (child.id == other.nodeId()) {
         children = (PersistentVector)children
-	  .set(i, new Child(other.bounds(), other.nodeId()));
+          .set(i, new Child(other.bounds(), other.nodeId()));
         break;
       }
     }
@@ -196,7 +196,7 @@ public abstract class Node implements INode, RamaSerializable {
         this.children = Vector.into(children, toInsert);
         break;
       } else if (nRemaining <= minChildren - nodes.get(1).count()) {
-	Node n = nodes.get(1);
+        Node n = nodes.get(1);
         n.children = n.children.cons(toInsert);
         break;
       }
@@ -248,13 +248,19 @@ public abstract class Node implements INode, RamaSerializable {
       double childArea = child.bounds.area();
       double delta = unionBounds.area() - childArea;
       if (((minDelta == delta) && (childArea < chosenArea)) ||
-	  minDelta > delta) {
-	minDelta = delta;
-	chosenArea = childArea;
-	childId = child.id;
+          minDelta > delta) {
+        minDelta = delta;
+        chosenArea = childArea;
+        childId = child.id;
       }
     }
     return childId;
   }
 
+  public List<String> boundsStrings() {
+    return ((Collection<Child>) children)
+        .stream()
+        .map(Child::boundsString)
+        .collect(Collectors.toList());
+  }
 }

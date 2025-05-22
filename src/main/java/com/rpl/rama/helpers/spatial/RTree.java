@@ -25,7 +25,11 @@ import org.slf4j.LoggerFactory;
 import static com.rpl.rama.helpers.TopologyUtils.extractJavaFields;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class RTree implements RamaSerializable {
   private final int dimensions;
@@ -200,18 +204,19 @@ public class RTree implements RamaSerializable {
     final String currentRootNodeVar = Helpers.genVar("rootNode");
     final String rootNodeIdVar = Helpers.genVar("rootNodeId");
     return Block
-      .each(Ops.PRINTLN, "rootNode")
-      .localSelect(rootPstate, Path.stay()).out(currentRootNodeVar)
-      .ifTrue(new Expr(Ops.IS_NULL, currentRootNodeVar),
-              Block
-              .each(Ops.PRINTLN, "Creating root node")
-              .macro(idGenerator.genId(rootNodeIdVar))
-              .each(RTree::constructRoot, this, rootNodeIdVar).out(rootNodeVar)
-              .macro(broadcastRootNodeValue(rootNodeVar)),
-              Block
-              .each(Ops.PRINTLN, "Root node already exists")
-              .each(Ops.IDENTITY, currentRootNodeVar).out(rootNodeVar))
-      .each(Ops.PRINTLN, "Root node", rootNodeVar);
+        .each(Ops.PRINTLN, "rootNode")
+        .localSelect(rootPstate, Path.stay()).out(currentRootNodeVar)
+        .ifTrue(new Expr(Ops.IS_NULL, currentRootNodeVar),
+                Block
+                .each(Ops.PRINTLN, "Creating root node")
+                .macro(idGenerator.genId(rootNodeIdVar))
+                .each(RTree::constructRoot, this, rootNodeIdVar).out(rootNodeVar)
+                .macro(broadcastRootNodeValue(rootNodeVar)),
+                Block
+                .each(Ops.PRINTLN, "Root node already exists")
+                .each(Ops.IDENTITY, currentRootNodeVar).out(rootNodeVar))
+        // .each(Ops.IDENTITY, currentRootNodeVar).out(rootNodeVar)
+        .each(Ops.PRINTLN, "Root node", rootNodeVar);
   }
 
   protected Block readNode(final String nodeIdVar, final String nodeVar) {
@@ -250,9 +255,35 @@ public class RTree implements RamaSerializable {
                 Vector.into(c1, c2));
   }
 
-  private  PersistentVector groupChildren(
+  /** just append children in he order that they are appended */
+  private  PersistentVector naiveGroupChildren(
     final PersistentVector children) {
-    LOGGER.debug("groupChildren: " + children.getClass().getName() + " " + children.toString());
+    LOGGER.debug("naiveGroupChildren: " + children.toString());
+    return Vector.partitionAll(M, children);
+  }
+
+  /** Linear algorithm from original R-Tree paper */
+  private  PersistentVector linearGroupChildren(
+    final PersistentVector children) {
+    LOGGER.debug("linearGroupChildren: " + children.toString());
+    // TODO implement linear
+    return Vector.partitionAll(M, children);
+  }
+
+  /** STR algorithm */
+  private  PersistentVector strGroupChildren(
+    PersistentVector children) {
+    LOGGER.debug("strGroupChildren: " + children.toString());
+    int numNodes /* P */ = (int)Math.ceil(children.size()/M);
+    int slixeSize /* S */ = (int)Math.ceil(Math.sqrt(numNodes));
+    children = Vector.into(
+      Vector.empty(),
+      ((List<Child>)children)
+      .stream()
+      .sorted(Comparator.comparing(
+        (Child child) -> (Double)child.bounds.getMin(0)))
+      .collect(Collectors.toList()));
+
     return Vector.partitionAll(M, children);
   }
 
@@ -297,7 +328,7 @@ public class RTree implements RamaSerializable {
         // NOTE - this is a temp var to avoid an array list literal in the Loop
         // var, which causes it to use the object cache.
         .each(RTree::allChildren, nodeVar, nodeOpsVar).out("*allChildren")
-        .each(RTree::groupChildren, this, "*allChildren").out("*groupedChildren")
+        .each(RTree::naiveGroupChildren, this, "*allChildren").out("*groupedChildren")
         // Create as many siblings as needed.
         .each(RTreeHelpers::newArrayList).out("*emptySiblings")
         .each(Ops.IDENTITY,
@@ -668,6 +699,33 @@ public class RTree implements RamaSerializable {
       ;
   }
 
+  /** Dump bounding boxes for display */
+  private Block dumpBounds(final String elementsVar) {
+    return Block
+        // .macro(rootNode("*rootNode"))
+        .localSelect(rootPstate, Path.stay()).out("*rootNode")
+        .ifTrue(
+          new Expr(Ops.IS_NULL, "*rootNode"),
+          Block.each(Ops.EXPLODE,
+                     new Expr(RTree::<Object>emptyList)).out(elementsVar),
+          Block.loopWithVars(
+            LoopVars
+            .var("*node", "*rootNode")
+            .var("*level", 0),
+            Block
+            .each(Ops.EXPLODE, new Expr(Node::getChildren, "*node")).out("*child")
+            .emitLoop(new Expr(Ops.TUPLE,
+                               "*level",
+                               new Expr(Child::boundsString, "*child")))
+            .ifTrue(
+              new Expr(Ops.NOT, new Expr(Node::isLeaf, "*node")),
+              Block
+              .each(Child::getId, "*child").out("*childId")
+              .macro(readNode("*childId", "*nextNode"))
+              .continueLoop("*nextNode", new Expr(Ops.INC, "*level"))))
+          .out(elementsVar));
+  }
+
   public static void addObject(MBR bounds, Long objectId, OutputCollector collector) {
     collector.emit(new AddObject(bounds, objectId));
   }
@@ -1001,6 +1059,11 @@ public class RTree implements RamaSerializable {
       .macro(dumpDot("*elements"))
       .originPartition()
       .agg(Agg.list("*elements")).out("*allElements");
+
+    topologies.query("dumpBounds").out("*allBounds")
+      .macro(dumpBounds("*elements"))
+      .originPartition()
+      .agg(Agg.list("*elements")).out("*allBounds");
   }
 
 

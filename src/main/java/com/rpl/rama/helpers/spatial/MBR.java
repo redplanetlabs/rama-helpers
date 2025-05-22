@@ -384,7 +384,7 @@ public class MBR implements RamaSerializable {
 
     for (int i = 0; i < mins.length; i++) {
       if (maxs[i] < other.maxs[i] ||
-	  mins[i] > other.mins[i]) {
+          mins[i] > other.mins[i]) {
         return false;
       }
     }
@@ -709,5 +709,28 @@ public class MBR implements RamaSerializable {
       res = res + "[" + mins[i] + ", " + maxs[i] + "] ";
     }
     return res;
+  }
+
+  public String boundsString() {
+    StringBuilder line = new StringBuilder();
+    // for (int i = 0; i < mins.length; i++) {
+    //   // Write min values followed by max values for each dimension
+    //   line.append(mins[i]).append(" ");
+    //   line.append(maxs[i]);
+    //   if (i < mins.length - 1) {
+    //     line.append(" ");
+    //   } else {
+    //     line.append("\n");
+    //   }
+    // }
+    for (int i = 0; i < mins.length; i++) {
+      // Write min values followed by max values for each dimension
+      line.append(mins[i]).append(" ");
+    }
+    for (int i = 0; i < mins.length; i++) {
+      // Write min values followed by max values for each dimension
+      line.append(maxs[i]).append(" ");
+    }
+    return line.toString();
   }
 }

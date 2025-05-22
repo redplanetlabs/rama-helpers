@@ -23,4 +23,16 @@ public final class Child implements RamaSerializable {
   public static boolean isChild(Object x) {
     return x instanceof Child;
   }
+
+  public MBR getBounds() {
+    return bounds;
+  }
+
+  public long getId() {
+    return id;
+  }
+
+  public String boundsString() {
+    return bounds.boundsString();
+  }
 }
