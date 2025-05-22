@@ -2,6 +2,7 @@ package com.rpl.rama.helpers.spatial;
 
 import clojure.lang.PersistentVector;
 import clojure.lang.APersistentVector;
+import clojure.lang.LazySeq;
 
 import com.rpl.rama.Agg;
 import com.rpl.rama.Block;
@@ -274,8 +275,9 @@ public class RTree implements RamaSerializable {
   private  PersistentVector strGroupChildren(
     PersistentVector children) {
     LOGGER.debug("strGroupChildren: " + children.toString());
-    int numNodes /* P */ = (int)Math.ceil(children.size()/M);
-    int slixeSize /* S */ = (int)Math.ceil(Math.sqrt(numNodes));
+    int numChildren = children.size();
+    int numPages /* P */ = (int)Math.ceil(numChildren/M);
+    int numSlices /* S */ = (int)Math.ceil(Math.sqrt(numPages));
     children = Vector.into(
       Vector.empty(),
       ((List<Child>)children)
@@ -283,8 +285,40 @@ public class RTree implements RamaSerializable {
       .sorted(Comparator.comparing(
         (Child child) -> (Double)child.bounds.getMin(0)))
       .collect(Collectors.toList()));
+    LOGGER.debug("STR A children: " + children);
+    PersistentVector unsortedSlices =
+         // create numSlices partitions
+         Vector.partitionAll(numChildren/numSlices, children);
+    LOGGER.debug("STR AA unsortedSlices: " + unsortedSlices);
 
-    return Vector.partitionAll(M, children);
+    PersistentVector slices =
+        Vector.into(
+          Vector.empty(),
+          ((Collection<LazySeq>)unsortedSlices)
+          .stream()
+          // partition each slice by M, and flatten
+          .map((LazySeq slice) ->
+               {
+                 LOGGER.debug("STR B slice: " + slice);
+                 return Vector.into(
+                   Vector.empty(),
+                   ((Collection<Child>)slice)
+                   .stream()
+                   .sorted(Comparator.comparing(
+                     (Child child) -> (Double)child.bounds.getMin(1)))
+                   .collect(Collectors.toList())); })
+          .collect(Collectors.toList()));
+
+    PersistentVector result =
+        ((Collection<PersistentVector>)slices)
+        .stream()
+        .reduce(Vector.empty(),
+                (PersistentVector res, PersistentVector slice) ->
+                Vector.into(res, Vector.partitionAll(M, slice)),
+                (PersistentVector res, PersistentVector other) ->
+                Vector.into(res, other));
+
+    return result;
   }
 
   private static Object updateNodeChildren(Node node,
@@ -328,7 +362,8 @@ public class RTree implements RamaSerializable {
         // NOTE - this is a temp var to avoid an array list literal in the Loop
         // var, which causes it to use the object cache.
         .each(RTree::allChildren, nodeVar, nodeOpsVar).out("*allChildren")
-        .each(RTree::naiveGroupChildren, this, "*allChildren").out("*groupedChildren")
+        // .each(RTree::naiveGroupChildren, this, "*allChildren").out("*groupedChildren")
+        .each(RTree::strGroupChildren, this, "*allChildren").out("*groupedChildren")
         // Create as many siblings as needed.
         .each(RTreeHelpers::newArrayList).out("*emptySiblings")
         .each(Ops.IDENTITY,
