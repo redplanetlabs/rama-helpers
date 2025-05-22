@@ -102,6 +102,11 @@ public class MBR implements RamaSerializable {
     return maxs[dimension];
   }
 
+  public double getCenter(int dimension) {
+    assert validDimension(dimension) : "Invalid dimension";
+    return (mins[dimension] + maxs[dimension])/2.0;
+  }
+
   /**
    * Returns an array containing all minimum coordinates.
    *

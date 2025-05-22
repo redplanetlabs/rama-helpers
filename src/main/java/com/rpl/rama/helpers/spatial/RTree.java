@@ -271,25 +271,50 @@ public class RTree implements RamaSerializable {
     return Vector.partitionAll(M, children);
   }
 
-  /** STR algorithm */
-  private  PersistentVector strGroupChildren(
+
+  private int srtSlices(int numPages) {
+    double x;
+    switch(M) {
+      case 2: x = Math.sqrt(numPages); break;
+      case 3: x = Math.cbrt(numPages); break;
+      default: x = Math.pow(numPages, 1.0/M); break;
+    }
+    return (int)Math.ceil(x);
+  }
+
+  private PersistentVector strGroupChildren(
     PersistentVector children) {
-    LOGGER.debug("strGroupChildren: " + children.toString());
+    return strGroupChildren0(
+      ((Child)children.peek()).bounds.dimensions(),
+      children);
+  }
+
+  /** STR algorithm */
+  private PersistentVector strGroupChildren0(
+    int dimension,
+    PersistentVector children) {
+    LOGGER.debug("strGroupChildren0 dimension: " + dimension);
+    LOGGER.debug("strGroupChildren0 children: " + children);
     int numChildren = children.size();
     int numPages /* P */ = (int)Math.ceil(numChildren/M);
-    int numSlices /* S */ = (int)Math.ceil(Math.sqrt(numPages));
+    int numSlices /* S */ = srtSlices(numPages);
     children = Vector.into(
       Vector.empty(),
       ((List<Child>)children)
       .stream()
       .sorted(Comparator.comparing(
-        (Child child) -> (Double)child.bounds.getMin(0)))
+        (Child child) -> (Double)child.bounds.getCenter(M - dimension)))
       .collect(Collectors.toList()));
     LOGGER.debug("STR A children: " + children);
     PersistentVector unsortedSlices =
          // create numSlices partitions
          Vector.partitionAll(numChildren/numSlices, children);
     LOGGER.debug("STR AA unsortedSlices: " + unsortedSlices);
+    LOGGER.debug("STR AA unsortedSlice sizes: " +
+                 ((Collection<LazySeq>)unsortedSlices)
+                 .stream()
+                 .map(LazySeq::size)
+                 .collect(Collectors.toList()));
 
     PersistentVector slices =
         Vector.into(
@@ -300,13 +325,20 @@ public class RTree implements RamaSerializable {
           .map((LazySeq slice) ->
                {
                  LOGGER.debug("STR B slice: " + slice);
-                 return Vector.into(
+                 if (dimension > 2) {
+                   return strGroupChildren0(
+                     dimension - 1,
+                     Vector.into(Vector.empty(), slice));
+                 } else {
+                   return Vector.into(
                    Vector.empty(),
                    ((Collection<Child>)slice)
                    .stream()
                    .sorted(Comparator.comparing(
-                     (Child child) -> (Double)child.bounds.getMin(1)))
-                   .collect(Collectors.toList())); })
+                     (Child child) ->
+                     (Double)child.bounds.getCenter(M - dimension + 1)))
+                   .collect(Collectors.toList()));}
+               })
           .collect(Collectors.toList()));
 
     PersistentVector result =
