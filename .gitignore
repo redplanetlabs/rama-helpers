@@ -5,3 +5,7 @@ target/
 .factorypath
 .settings/
 .project
+*.txt
+*.png
+*.log
+.dir-locals.el
