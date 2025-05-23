@@ -795,6 +795,33 @@ public class RTree implements RamaSerializable {
           .out(elementsVar));
   }
 
+/** Dump bounding boxes for display */
+  private Block boundsStats(final String statsVar) {
+    return Block
+        // .macro(rootNode("*rootNode"))
+        .localSelect(rootPstate, Path.stay()).out("*rootNode")
+        .ifTrue(
+          new Expr(Ops.IS_NULL, "*rootNode"),
+          Block.each(Ops.EXPLODE,
+                     new Expr(RTree::<Object>emptyList)).out(statsVar),
+          Block.loopWithVars(
+            LoopVars
+            .var("*node", "*rootNode")
+            .var("*level", 0),
+            Block
+            .emitLoop(new Expr(Ops.TUPLE,
+                               "*level",
+                               new Expr(Node::overlapArea, "*node")))
+            .each(Ops.EXPLODE, new Expr(Node::getChildren, "*node")).out("*child")
+            .ifTrue(
+              new Expr(Ops.NOT, new Expr(Node::isLeaf, "*node")),
+              Block
+              .each(Child::getId, "*child").out("*childId")
+              .macro(readNode("*childId", "*nextNode"))
+              .continueLoop("*nextNode", new Expr(Ops.INC, "*level"))))
+          .out(statsVar));
+  }
+
   public static void addObject(MBR bounds, Long objectId, OutputCollector collector) {
     collector.emit(new AddObject(bounds, objectId));
   }
@@ -1089,50 +1116,55 @@ public class RTree implements RamaSerializable {
               .term(Vector::into, newOpsVar))));
   }
 
-        private void declareQueries(final Topologies topologies) {
+  private void declareQueries(final Topologies topologies) {
     // TODO scope query names by rtree prfix
     topologies.query("objectsInBounds", "*bounds").out("*objects")
-      .each(Ops.LOG_DEBUG,
-            LOGGER,
-            new Expr(Ops.TO_STRING, "search objectsInBounds: ", "*bounds"))
-      .localSelect(rootPstate, Path.stay()).out("*root")
-      .each(Ops.LOG_DEBUG, LOGGER,
-            new Expr(Ops.TO_STRING, "search root: ", "*root"))
-      .macro(search("*bounds", "*root", "*objects"))
-      .originPartition()
-      .agg(Agg.list("*objects")).out("*objects");
+        .each(Ops.LOG_DEBUG,
+              LOGGER,
+              new Expr(Ops.TO_STRING, "search objectsInBounds: ", "*bounds"))
+        .localSelect(rootPstate, Path.stay()).out("*root")
+        .each(Ops.LOG_DEBUG, LOGGER,
+              new Expr(Ops.TO_STRING, "search root: ", "*root"))
+        .macro(search("*bounds", "*root", "*objects"))
+        .originPartition()
+        .agg(Agg.list("*objects")).out("*objects");
 
     topologies.query("verifyTree").out("*isValid")
-      .localSelect(rootPstate, Path.stay()).out("*root")
-      .each(Ops.LOG_DEBUG, LOGGER,
-            new Expr(Ops.TO_STRING, "verify root: ", "*root"))
-      .macro(verify("*root", "*isValid"))
-      .originPartition()
-      .agg(Agg.list("*isValid")).out("*isValid")
-      .localSelect(rootPstate, Path.stay()).out("*root")
-      .each(Ops.LOG_DEBUG, LOGGER,
-            new Expr(Ops.TO_STRING, "verify root at end: ", "*root"))
-      ;
+        .localSelect(rootPstate, Path.stay()).out("*root")
+        .each(Ops.LOG_DEBUG, LOGGER,
+              new Expr(Ops.TO_STRING, "verify root: ", "*root"))
+        .macro(verify("*root", "*isValid"))
+        .originPartition()
+        .agg(Agg.list("*isValid")).out("*isValid")
+        .localSelect(rootPstate, Path.stay()).out("*root")
+        .each(Ops.LOG_DEBUG, LOGGER,
+              new Expr(Ops.TO_STRING, "verify root at end: ", "*root"))
+        ;
 
     topologies.query("dumpTree").out("*task-ids")
-      .allPartition()
-      .localSelect(rootPstate, Path.stay()).out("*root")
-      .each(Ops.LOG_DEBUG, LOGGER,
-            new Expr(Ops.TO_STRING, "dump tree root: ", "*root"))
-      .macro(dump("*root"))
-      .each(Ops.CURRENT_TASK_ID).out("*task-id")
-      .originPartition()
-      .agg(Agg.list("*task-id")).out("*task-ids");
+        .allPartition()
+        .localSelect(rootPstate, Path.stay()).out("*root")
+        .each(Ops.LOG_DEBUG, LOGGER,
+              new Expr(Ops.TO_STRING, "dump tree root: ", "*root"))
+        .macro(dump("*root"))
+        .each(Ops.CURRENT_TASK_ID).out("*task-id")
+        .originPartition()
+        .agg(Agg.list("*task-id")).out("*task-ids");
 
     topologies.query("dumpDot").out("*allElements")
-      .macro(dumpDot("*elements"))
-      .originPartition()
-      .agg(Agg.list("*elements")).out("*allElements");
+        .macro(dumpDot("*elements"))
+        .originPartition()
+        .agg(Agg.list("*elements")).out("*allElements");
 
     topologies.query("dumpBounds").out("*allBounds")
-      .macro(dumpBounds("*elements"))
-      .originPartition()
-      .agg(Agg.list("*elements")).out("*allBounds");
+        .macro(dumpBounds("*elements"))
+        .originPartition()
+        .agg(Agg.list("*elements")).out("*allBounds");
+
+    topologies.query("boundsStats").out("*allStats")
+        .macro(boundsStats("*elements"))
+        .originPartition()
+        .agg(Agg.list("*elements")).out("*allStats");
   }
 
 

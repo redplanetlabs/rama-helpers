@@ -103,6 +103,18 @@ public abstract class Node implements INode, RamaSerializable {
     return unionBounds;
   }
 
+  public double overlapArea() {
+    double intersection = 0.0;
+    for (Child child0 : (Collection<Child>) children) {
+      for (Child child1 : (Collection<Child>) children) {
+        if (child0 != child1) {
+          intersection += child0.bounds.intersection(child1.bounds).area();
+        }
+      }
+    }
+    return intersection;
+  }
+
   public Node updateChild(Node other) {
     for (int i=0; i < children.size() ; i++) {
       Child child = (Child)children.get(i);

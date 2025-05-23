@@ -134,6 +134,9 @@ public class TigerTest {
       final QueryTopologyClient<List<List<Object>>> dumpBounds
           = cluster.clusterQuery(Module.class.getName(), "dumpBounds");
 
+      final QueryTopologyClient<List<List<Object>>> boundsStats
+          = cluster.clusterQuery(Module.class.getName(), "boundsStats");
+
       LOGGER.debug("START");
 
       // Shapefiles can be download from
@@ -239,6 +242,8 @@ public class TigerTest {
 
       List<List<Object>> boundsList = dumpBounds.invoke();
       RTreeHelpers.dumpBoundsList(boundsList);
+      List<List<Object>> allBoundsStats = boundsStats.invoke();
+      RTreeHelpers.dumpLevelOverlapStats(allBoundsStats);
     }
   }
 }

@@ -451,8 +451,8 @@ public class RTreeTest {
       ArrayList<Long> objectIds = new ArrayList<>();
 
       for (int i = 0; i < numObjects ; i++) {
-        LOGGER.error("XX "+ i + " " + objectLookup.selectOne(Path.key(new Long(i))));
-        objectIds.add(objectLookup.selectOne(Path.key(new Long(i))));
+        LOGGER.error("XX "+ i + " " + objectLookup.selectOne(Path.key(Long.valueOf(i))));
+        objectIds.add(objectLookup.selectOne(Path.key(Long.valueOf(i))));
       }
 
       for (int i = 0; i < numObjects ; i++) {
