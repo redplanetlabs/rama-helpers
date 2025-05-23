@@ -442,7 +442,7 @@ public class RTreeTest {
       System.out.println("}");
 
       List<List<Object>> boundsList = dumpBounds.invoke();
-      dumpBoundsList(boundsList);
+      RTreeHelpers.dumpBoundsList(boundsList);
 
       LOGGER.error("Verify " + verify.invoke());
 
@@ -471,21 +471,4 @@ public class RTreeTest {
     LOGGER.debug("uncoordinatedTest done");
   }
 
-  private void dumpBoundsList(List<List<Object>> boundsList) throws IOException {
-    ArrayList<PrintWriter> levelWriters = new ArrayList<>();
-    for (List<Object> tuple : boundsList) {
-      int level = (Integer) tuple.get(0);
-      String s = (String) tuple.get(1);
-      if (level >= levelWriters.size()) {
-        FileWriter fw = new FileWriter("level-" + level + "-bounds.txt");
-        levelWriters.add(level, new PrintWriter(fw));
-      }
-      PrintWriter writer = levelWriters.get(level);
-      writer.println(s);
-    }
-
-    for (PrintWriter pw : levelWriters) {
-      pw.close();
-    }
-  }
 }

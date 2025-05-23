@@ -1,7 +1,6 @@
 package com.rpl.rama.helpers.spatial;
 
 import clojure.lang.PersistentVector;
-import clojure.lang.APersistentVector;
 import clojure.lang.LazySeq;
 
 import com.rpl.rama.Agg;
@@ -27,7 +26,6 @@ import static com.rpl.rama.helpers.TopologyUtils.extractJavaFields;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -293,17 +291,20 @@ public class RTree implements RamaSerializable {
   private PersistentVector strGroupChildren0(
     int dimension,
     PersistentVector children) {
-    LOGGER.debug("strGroupChildren0 dimension: " + dimension);
+    LOGGER.debug("strGroupChildren0 dimension: " + dimension + " M=" + M);
     LOGGER.debug("strGroupChildren0 children: " + children);
     int numChildren = children.size();
     int numPages /* P */ = (int)Math.ceil(numChildren/M);
-    int numSlices /* S */ = srtSlices(numPages);
+    int numSlices /* S */ = Math.max(1, srtSlices(numPages));
+    LOGGER.debug("strGroupChildren0 numPages: " + numPages +
+                 " numSlices: " + numSlices);
     children = Vector.into(
       Vector.empty(),
       ((List<Child>)children)
       .stream()
       .sorted(Comparator.comparing(
-        (Child child) -> (Double)child.bounds.getCenter(M - dimension)))
+        (Child child) ->
+        (Double)child.bounds.getCenter(child.bounds.dimensions() - dimension)))
       .collect(Collectors.toList()));
     LOGGER.debug("STR A children: " + children);
     PersistentVector unsortedSlices =
@@ -336,7 +337,8 @@ public class RTree implements RamaSerializable {
                    .stream()
                    .sorted(Comparator.comparing(
                      (Child child) ->
-                     (Double)child.bounds.getCenter(M - dimension + 1)))
+                     (Double)child.bounds.getCenter(
+                       child.bounds.dimensions() - dimension + 1)))
                    .collect(Collectors.toList()));}
                })
           .collect(Collectors.toList()));

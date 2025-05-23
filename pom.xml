@@ -15,6 +15,8 @@
 
         <!-- these are here for override-ability by build processes -->
         <custom.final.name>rama-helpers</custom.final.name>
+
+        <geotools.version>33.1</geotools.version>
     </properties>
 
     <dependencies>
@@ -74,7 +76,51 @@
 	  <version>2.16.0</version>
 	  <scope>test</scope>
 	</dependency>
+	<dependency>
+	  <groupId>org.geotools</groupId>
+	  <artifactId>gt-shapefile</artifactId>
+	  <version>${geotools.version}</version>
+	  <scope>test</scope>
+	</dependency>
+	<dependency>
+	  <groupId>org.geotools</groupId>
+	  <artifactId>gt-epsg-hsql</artifactId>
+	  <version>${geotools.version}</version>
+	  <scope>test</scope>
+	</dependency>
+	<!-- Core GeoTools dependency -->
+	<dependency>
+          <groupId>org.geotools</groupId>
+          <artifactId>gt-main</artifactId>
+	  <version>${geotools.version}</version>
+	  <scope>test</scope>
+	</dependency>
+
+	<!-- Shapefile support -->
+	<dependency>
+	  <groupId>org.geotools</groupId>
+	  <artifactId>gt-shapefile</artifactId>
+	  <version>${geotools.version}</version>
+	  <scope>test</scope>
+	</dependency>
+
+	<!-- CQL (Common Query Language) support for filtering -->
+	<dependency>
+	  <groupId>org.geotools</groupId>
+	  <artifactId>gt-cql</artifactId>
+	  <version>${geotools.version}</version>
+	  <scope>test</scope>
+	</dependency>
+
+	<!-- EPSG database for coordinate reference systems -->
+	<dependency>
+	  <groupId>org.geotools</groupId>
+	  <artifactId>gt-epsg-hsql</artifactId>
+	  <version>${geotools.version}</version>
+	  <scope>test</scope>
+	</dependency>
     </dependencies>
+
     <dependencyManagement>
         <dependencies>
             <dependency>
@@ -91,6 +137,20 @@
       <repository>
         <id>nexus-releases</id>
         <url>https://nexus.redplanetlabs.com/repository/maven-public-releases</url>
+      </repository>
+      <repository>
+	<id>osgeo</id>
+	<name>OSGeo Release Repository</name>
+	<url>https://repo.osgeo.org/repository/release/</url>
+	<snapshots><enabled>false</enabled></snapshots>
+	<releases><enabled>true</enabled></releases>
+      </repository>
+      <repository>
+	<id>osgeo-snapshot</id>
+	<name>OSGeo Snapshot Repository</name>
+	<url>https://repo.osgeo.org/repository/snapshot/</url>
+	<snapshots><enabled>true</enabled></snapshots>
+	<releases><enabled>false</enabled></releases>
       </repository>
     </repositories>
 
@@ -145,7 +205,7 @@
             </testResource>
         </testResources>
     </build>
-      <distributionManagement>
+    <distributionManagement>
         <repository>
           <id>nexus-releases</id>
           <url>https://nexus.redplanetlabs.com/repository/maven-public-releases</url>

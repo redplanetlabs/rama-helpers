@@ -14,8 +14,8 @@ set output "rectangles.png"
 
 set style fill transparent solid 0.5
 set style rectangle fc lt -1 fs solid 0.15 noborder
-set xrange [0:100]
-set yrange [0:1000]
+# set xrange [0:100]
+# set yrange [0:1000]
 set grid
 
 plot datafile using (($1+$3)/2):(($2+$4)/2):(abs($3-$1)/2):(abs($4-$2)/2) \
