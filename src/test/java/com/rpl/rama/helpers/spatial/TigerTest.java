@@ -20,7 +20,9 @@ import com.rpl.rama.test.LaunchConfig;
 
 
 import java.io.File;
+import java.io.IOException;
 import java.io.Serializable;
+import java.net.MalformedURLException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -148,102 +150,122 @@ public class TigerTest {
         new File(".").getAbsolutePath() +
         "/data/tiger/tl_2023_us_uac20/tl_2023_us_uac20.shp");
 
-      LOGGER.debug("Path: " + shapeFile.toString());
-      String baseName = shapeFile.toString().replaceAll("\\.shp$", "");
-      File shxFile = new File(baseName + ".shx");
-      File dbfFile = new File(baseName + ".dbf");
+      int n = loadTigerFile(depot, shapeFile);
 
-      System.out.println("Required files:");
-      System.out.println("  .shp exists: " + shapeFile.exists());
-      System.out.println("  .shx exists: " + shxFile.exists());
-      System.out.println("  .dbf exists: " + dbfFile.exists());
+      cluster.waitForMicrobatchProcessedCount(
+        module.getClass().getName(), "m", n);
 
-      Map<String, Serializable> params = new HashMap<>();
-      params.put("url", shapeFile.toURI().toURL());
-      params.put("create spatial index", Boolean.FALSE);
-      ShapefileDataStoreFactory dataStoreFactory
-          = new ShapefileDataStoreFactory();
-
-      ShapefileDataStore dataStore
-          = (ShapefileDataStore) dataStoreFactory.createNewDataStore(params);
-
-      // dataStore.createSchema(CITY);
-      String nameAttribute = "NAME20";
-
-      String typeName = dataStore.getTypeNames()[0];
-      LOGGER.debug("typeName = " + typeName);
-      LOGGER.debug("typeNames = " + dataStore.getTypeNames().length);
-      // SimpleFeatureSource featureSource = dataStore.getFeatureSource(typeName);
-
-      FeatureSource<SimpleFeatureType, SimpleFeature> featureSource =
-          dataStore.getFeatureSource(typeName);
-
-      SimpleFeatureType schema = featureSource.getSchema();
-
-      for (AttributeDescriptor attr : schema.getAttributeDescriptors()) {
-        LOGGER.debug("Available attribute: " + attr.getLocalName());
-      }
-
-      // if (featureSource instanceof SimpleFeatureStore) {
-      //   SimpleFeatureStore featureStore
-      //       = (SimpleFeatureStore) featureSource;
-
-      // }
-
-      String regionName = "Long Beach, WA";
-      Filter filter = CQL.toFilter(nameAttribute + " = '" + regionName + "'");
-      Query query = new Query(typeName, filter);
-
-      // Get the filtered features
-      // LOGGER.debug("Features: " + featureSource.getFeatures());
-
-      FeatureCollection<SimpleFeatureType, SimpleFeature> collection =
-          featureSource.getFeatures(// query
-                                  );
-
-      // Iterate through features and get bounding boxes
-      int i = 0;
-      try (FeatureIterator<SimpleFeature> features = collection.features()) {
-        while (features.hasNext()) {
-          SimpleFeature feature = features.next();
-
-          // Get the bounding box of the feature's geometry
-          BoundingBox bounds = feature.getBounds();
-
-          // System.out.println("Feature: " + feature.getAttribute(nameAttribute));
-          // System.out.println("Bounding Box:");
-          // System.out.println("  Min X: " + bounds.getMinX());
-          // System.out.println("  Min Y: " + bounds.getMinY());
-          // System.out.println("  Max X: " + bounds.getMaxX());
-          // System.out.println("  Max Y: " + bounds.getMaxY());
-          // System.out.println("  Width: " + bounds.getWidth());
-          // System.out.println("  Height: " + bounds.getHeight());
-          // System.out.println();
-
-          MBR mbr = new MBR(new double[]{bounds.getMinX(), bounds.getMinY()},
-                            new double[]{bounds.getMaxX(), bounds.getMaxY()});
-
-          depot.append(new AddObject(mbr, feature.getAttribute(nameAttribute)),
-                       AckLevel.NONE);
-
-          i = i + 1;
-        }
-      } catch (Exception e) {
-        LOGGER.debug("Error: " + e);
-      } finally {
-        dataStore.dispose();
-      }
-
-      LOGGER.debug("Num objects: " + i);
-
-      cluster.waitForMicrobatchProcessedCount(module.getClass().getName(),
-                                              "m",
-                                              i);
 
       List<List<Object>> boundsList = dumpBounds.invoke();
       RTreeHelpers.dumpBoundsList(boundsList);
       List<List<Object>> allBoundsStats = boundsStats.invoke();
       RTreeHelpers.dumpLevelOverlapStats(allBoundsStats);
     }
+  }
+
+
+  public void loadTiger() throws Exception {
+
+    try(InProcessCluster cluster = InProcessCluster.create()) {
+      final RamaModule module = new Module();
+      cluster.launchModule(module, new LaunchConfig(4, 3));
+
+      final Depot depot = cluster.clusterDepot(Module.class.getName(), "*depot");
+      final PState nodes = cluster.clusterPState(Module.class.getName(), "$$test__nodes");
+      final PState root = cluster.clusterPState(Module.class.getName(), "$$test__root");
+      final PState object = cluster.clusterPState(Module.class.getName(), "$$object");
+      final PState objectLookup = cluster.clusterPState(Module.class.getName(), "$$objectLookup");
+      final QueryTopologyClient q = cluster.clusterQuery(Module.class.getName(), "objectsInBounds");
+      final QueryTopologyClient<Boolean> verify
+          = cluster.clusterQuery(Module.class.getName(), "verifyTree");
+      final QueryTopologyClient<List<String>> dumpDot
+          = cluster.clusterQuery(Module.class.getName(), "dumpDot");
+      final QueryTopologyClient<List<Long>> dump
+          = cluster.clusterQuery(Module.class.getName(), "dumpTree");
+      final QueryTopologyClient<List<List<Object>>> dumpBounds
+          = cluster.clusterQuery(Module.class.getName(), "dumpBounds");
+
+      final QueryTopologyClient<List<List<Object>>> boundsStats
+          = cluster.clusterQuery(Module.class.getName(), "boundsStats");
+
+      LOGGER.debug("START");
+
+      // Shapefiles can be download from
+      // https://www.census.gov/cgi-bin/geo/shapefiles/index.php
+      //
+      // Some datasets are Urban Areas (uac20), Places, Counties, and county
+      // sub-divisions.
+      File shapeFile = new File(
+        new File(".").getAbsolutePath() +
+        "/data/tiger/tl_2023_us_uac20/tl_2023_us_uac20.shp");
+
+      int n = loadTigerFile(depot, shapeFile);
+
+      cluster.waitForMicrobatchProcessedCount(
+        module.getClass().getName(), "m", n);
+
+
+      List<List<Object>> boundsList = dumpBounds.invoke();
+      RTreeHelpers.dumpBoundsList(boundsList);
+      List<List<Object>> allBoundsStats = boundsStats.invoke();
+      RTreeHelpers.dumpLevelOverlapStats(allBoundsStats);
+    }
+  }
+
+  private int loadTigerFile(final Depot depot, final File shapeFile)
+      throws MalformedURLException, IOException {
+    LOGGER.debug("Path: " + shapeFile.toString());
+    String baseName = shapeFile.toString().replaceAll("\\.shp$", "");
+    File shxFile = new File(baseName + ".shx");
+    File dbfFile = new File(baseName + ".dbf");
+    System.out.println("Required files:");
+    System.out.println("  .shp exists: " + shapeFile.exists());
+    System.out.println("  .shx exists: " + shxFile.exists());
+    System.out.println("  .dbf exists: " + dbfFile.exists());
+    Map<String, Serializable> params = new HashMap<>();
+    params.put("url", shapeFile.toURI().toURL());
+    params.put("create spatial index", Boolean.FALSE);
+    ShapefileDataStoreFactory dataStoreFactory
+        = new ShapefileDataStoreFactory();
+    ShapefileDataStore dataStore
+        = (ShapefileDataStore) dataStoreFactory.createNewDataStore(params);
+    // dataStore.createSchema(CITY);
+    String nameAttribute = "NAME20";
+    String typeName = dataStore.getTypeNames()[0];
+    LOGGER.debug("typeName = " + typeName);
+    LOGGER.debug("typeNames = " + dataStore.getTypeNames().length);
+    FeatureSource<SimpleFeatureType, SimpleFeature> featureSource =
+        dataStore.getFeatureSource(typeName);
+    SimpleFeatureType schema = featureSource.getSchema();
+    for (AttributeDescriptor attr : schema.getAttributeDescriptors()) {
+      LOGGER.debug("Available attribute: " + attr.getLocalName());
+    }
+    FeatureCollection<SimpleFeatureType, SimpleFeature> collection =
+        featureSource.getFeatures(// query
+                                );
+    // Iterate through features and get bounding boxes
+    int i = 0;
+    try (FeatureIterator<SimpleFeature> features = collection.features()) {
+      while (features.hasNext()) {
+        SimpleFeature feature = features.next();
+
+        // Get the bounding box of the feature's geometry
+        BoundingBox bounds = feature.getBounds();
+
+        MBR mbr = new MBR(new double[]{bounds.getMinX(), bounds.getMinY()},
+                          new double[]{bounds.getMaxX(), bounds.getMaxY()});
+
+        depot.append(new AddObject(mbr, feature.getAttribute(nameAttribute)),
+                     AckLevel.NONE);
+
+        i = i + 1;
+      }
+    } catch (Exception e) {
+      LOGGER.debug("Error: " + e);
+    } finally {
+      dataStore.dispose();
+    }
+    LOGGER.debug("Num objects: " + i);
+    return i;
   }
 }
