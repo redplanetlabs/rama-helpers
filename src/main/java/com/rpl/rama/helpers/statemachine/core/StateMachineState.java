@@ -21,7 +21,7 @@ public class StateMachineState<State extends Enum<State>>
     return this;
   }
 
-  State getCurrentState() {
+  public State getCurrentState() {
     return currentState;
   }
 

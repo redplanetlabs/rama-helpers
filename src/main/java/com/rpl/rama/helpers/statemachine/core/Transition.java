@@ -1,6 +1,8 @@
 package com.rpl.rama.helpers.statemachine.core;
 
-public class Transition<State extends Enum<State>> {
+import com.rpl.rama.RamaSerializable;
+
+public class Transition<State extends Enum<State>> implements RamaSerializable {
 
   public State transitionTo;
 
@@ -8,5 +10,9 @@ public class Transition<State extends Enum<State>> {
 
   public State targetState() {
     return transitionTo;
+  }
+
+  public String toString() {
+    return "Transition: targetState " + transitionTo.toString();
   }
 }

@@ -14,9 +14,14 @@ import com.rpl.rama.module.MicrobatchTopology;
 import com.rpl.rama.ops.Ops;
 import com.rpl.rama.ops.RamaFunction1;
 
+import org.slf4j.LoggerFactory;
+
 public class StateMachine<State extends Enum<State>,
                                 Signal extends Enum<Signal>>
     implements RamaSerializable {
+
+  public static final Object LOGGER =
+      LoggerFactory.getLogger(StateMachine.class);
 
   private StateMachineConfig<State, Signal> stateMachineConfig;
 
@@ -32,6 +37,9 @@ public class StateMachine<State extends Enum<State>,
     return stateMachineConfig.stateConfig(state);
   }
 
+  public StateMachineConfig<State, Signal> getStateMachineConfig() {
+    return stateMachineConfig;
+  }
   public void define(Setup setup, Topologies topologies, State initState) {
     setup.declareTickDepot("*smDepot", 100);  // 100ms
 
@@ -45,13 +53,20 @@ public class StateMachine<State extends Enum<State>,
     final String newStateVar = Helpers.genVar("newState");
     sm.source("*smDepot").batchBlock(
       Block
+      .each(Ops.LOG_DEBUG, LOGGER, "StateMachine coord")
       .localSelect("$$sm", Path.stay()).out(smStateVar)
+      .each(Ops.LOG_DEBUG, LOGGER, "AA")
       .each(StateMachineState<State>::getCurrentState,
             smStateVar).out("*stateValue")
+      .each(Ops.LOG_DEBUG, LOGGER, "BB")
       .each(StateMachine<State, Signal>::stateConfig, this,
             "*stateValue").out("*stateConfig")
+      .each(Ops.LOG_DEBUG, LOGGER, "CC")
       .each(StateConfig<State, Signal>::getTransitions,
             "*stateConfig").out("*transitionIter")
+      .each(Ops.LOG_DEBUG, LOGGER, "DD")
+      .each(Ops.LOG_DEBUG, LOGGER,
+            new Expr(Ops.TO_STRING, "StateMachine coord: ", "*stateValue"))
       .loop(
         Block
         .each(Iterator<Transition<State>>::hasNext,
@@ -59,6 +74,9 @@ public class StateMachine<State extends Enum<State>,
         .ifTrue("*hasNext",
                 Block.each(Iterator<Transition<State>>::next,
                            "*transitionIter").out("*transition")
+                .each(Ops.LOG_DEBUG, LOGGER,
+                      new Expr(Ops.TO_STRING,
+                               "Check transition: ", "*transition"))
                 .macro(nextState(smStateVar, "*transition", newStateVar))
                 .ifTrue(
                   new Expr(Ops.IS_NULL, newStateVar),
@@ -102,12 +120,18 @@ public class StateMachine<State extends Enum<State>,
               smStateVar).out("*elapsedDuration")
         .each(StateConfig.AfterDuration<State>::isExpired,
               transitionVar, "*elapsedDuration").out("*isExpired")
+        .each(Ops.LOG_DEBUG, LOGGER,
+              new Expr(Ops.TO_STRING, "duratuion: ", "*elapsedDuration",
+                       ", isExpired: ", "*isExpired",
+                       ", transition: ", transitionVar))
         .ifTrue("*isExpired",
                 Block
                 .each(Transition<State>::targetState,
                       transitionVar).out("*unused")
                 .each(Transition<State>::targetState,
-                      transitionVar).out(newStateVar),
+                      transitionVar).out(newStateVar)
+                .each(Ops.LOG_DEBUG, LOGGER,
+              new Expr(Ops.TO_STRING, "duratuion expired: ", newStateVar)),
                 Block.each(Ops.IDENTITY, null).out(newStateVar));
   }
 

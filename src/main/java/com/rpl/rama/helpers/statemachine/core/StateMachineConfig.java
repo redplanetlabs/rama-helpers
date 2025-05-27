@@ -18,6 +18,19 @@ public class StateMachineConfig<State extends Enum<State>,
     return stateConfigs.get(state);
   }
 
+  @Override
+  public String toString() {
+    StringBuilder sb = new StringBuilder();
+    sb.append("StateConfigs: {\n");
+
+    stateConfigs.forEach((state, config) -> {
+        sb.append("  ").append(state).append(" -> ").append(config).append("\n");
+      });
+
+    sb.append("}");
+    return sb.toString();
+  }
+
   private StateMachineConfig(Map<State, StateConfig<State, Signal>> stateConfigs) {
     this.stateConfigs = stateConfigs;
   }

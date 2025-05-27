@@ -25,6 +25,12 @@ public class StateConfig<State extends Enum<State>,
     public Boolean isExpired(final Duration elapsed) {
       return elapsed.compareTo(duration) > 0;
     }
+
+    public String toString() {
+      return "AfterDuration: targetState " +
+          (transitionTo == null ? "null" : transitionTo.toString())
+          + ", duration: " + duration.toString();
+    }
   }
 
   public static class OnAllSignalled<State extends Enum<State>,
@@ -40,4 +46,16 @@ public class StateConfig<State extends Enum<State>,
     return transitions.iterator();
   }
 
+  @Override
+  public String toString() {
+    StringBuilder sb = new StringBuilder();
+    sb.append("Transitions: {\n");
+
+    transitions.forEach((transition) -> {
+        sb.append("    ").append(transition).append("\n");
+      });
+
+    sb.append("}");
+    return sb.toString();
+  }
 }
