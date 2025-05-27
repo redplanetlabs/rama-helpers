@@ -11,14 +11,14 @@ public class StateConfig<State extends Enum<State>,
     implements RamaSerializable {
 
   public static class OnTimeout<State extends Enum<State>>
-      extends Transition<State> implements RamaSerializable {
+      extends Transition<State> {
     public Duration timeoutDuration;
     public boolean requiresProgress;
     public TransitionType type() { return TransitionType.TIMEOUT; }
   }
 
   public static class AfterDuration<State extends Enum<State>>
-      extends Transition<State> implements RamaSerializable {
+      extends Transition<State> {
     public Duration duration;
     public TransitionType type() { return TransitionType.DURATION; }
 
@@ -35,7 +35,7 @@ public class StateConfig<State extends Enum<State>,
 
   public static class OnAllSignalled<State extends Enum<State>,
                                            Signal extends Enum<Signal>>
-      extends Transition<State> implements RamaSerializable {
+      extends Transition<State> {
     public Signal signal;
     public Duration timeout;
     public TransitionType type() { return TransitionType.ALL_SIGNALLED; }
