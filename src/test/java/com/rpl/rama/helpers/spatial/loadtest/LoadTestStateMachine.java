@@ -18,6 +18,7 @@ public class LoadTestStateMachine {
       new StateMachineConfig.Builder<LoadTestState, LoadTestSignal>()
       .state(LoadTestState.LOAD_DATA)
       .onAllSignalled(LoadTestSignal.LOAD_COMPLETE,
+                      Duration.ofSeconds(3),
                       LoadTestState.TIME_PROCESSING )
       .done()
       .build()

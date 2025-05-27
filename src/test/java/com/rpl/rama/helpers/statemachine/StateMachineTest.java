@@ -9,6 +9,7 @@ import com.rpl.rama.PState;
 import com.rpl.rama.Path;
 import com.rpl.rama.RamaModule;
 import com.rpl.rama.RamaSerializable;
+import com.rpl.rama.helpers.statemachine.coordination.PartitionProgress;
 import com.rpl.rama.helpers.statemachine.core.StateMachine;
 import com.rpl.rama.helpers.statemachine.core.StateMachineConfig;
 import com.rpl.rama.helpers.statemachine.core.StateMachineState;
@@ -18,6 +19,8 @@ import com.rpl.rama.test.InProcessCluster;
 import com.rpl.rama.test.LaunchConfig;
 
 import org.junit.jupiter.api.Test;
+import static org.junit.Assert.assertEquals;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +32,7 @@ class StateMachineTest {
 
     public static enum SMState implements RamaSerializable {
       DURATION_TEST,
+      ALL_PROGRESS_TEST,
       FINAL
     }
 
@@ -41,7 +45,13 @@ class StateMachineTest {
           new StateMachineConfig.Builder<SMState, SMSignal>()
 
           .state(SMState.DURATION_TEST)
-          .afterDuration(Duration.ofSeconds(1), SMState.FINAL)
+          .afterDuration(Duration.ofSeconds(1), SMState.ALL_PROGRESS_TEST)
+          .done()
+
+          .state(SMState.ALL_PROGRESS_TEST)
+          .onAllSignalled(SMSignal.TEST_SIGNAL,
+			  Duration.ofSeconds(1),
+			  SMState.FINAL)
           .done()
 
           .state(SMState.FINAL)
@@ -87,6 +97,31 @@ class StateMachineTest {
               .each(Ops.LOG_DEBUG, LOGGER, "DURATION_TEST")
               .allPartition()
               .each(Ops.LOG_DEBUG, LOGGER, "DURATION_TEST DONE"),
+              Case.create(
+                new Expr(Ops.EQUAL, "*state", SMState.ALL_PROGRESS_TEST))
+              .each(Ops.LOG_DEBUG, LOGGER, "ALL_PROGRESS_TEST")
+	      .each(StateMachineState<SMState>::elapsedDuration,
+		    smStateVar).out("*stateDuration")
+	      .each(Duration::toMillis,
+		    "*stateDuration").out("*durationMillis")
+              .allPartition()
+              .each(Ops.IDENTITY,
+                    PartitionProgress.PartitionStatus.WORKING).out("*status")
+	      .each(Ops.CURRENT_TASK_ID).out("*localTaskId")
+              .macro(stateMachine.madeProgress("*localTaskId",
+					       "*state",
+					       "*status"))
+	      .each(Ops.LOG_DEBUG, LOGGER, "XXX")
+	      .each(Ops.LOG_DEBUG, LOGGER,
+		    new Expr(Ops.TO_STRING,
+			     "durationMillis: ", "*durationMillis"))
+	      .ifTrue(new Expr(Ops.GREATER_THAN, "*durationMillis", 1000L),
+		      Block
+		      .each(Ops.LOG_DEBUG, LOGGER, "set signal")
+		      .each(Ops.IDENTITY, SMSignal.TEST_SIGNAL).out("*signal")
+		      .macro(stateMachine.setSignal("*localTaskId", "*signal"))
+		      .each(Ops.LOG_DEBUG, LOGGER, "set signal done"))
+              .each(Ops.LOG_DEBUG, LOGGER, "ALL_PROGRESS_TEST DONE"),
               Case.create(new Expr(Ops.IDENTITY, Boolean.TRUE))
               .each(Ops.LOG_DEBUG, LOGGER,
                     new Expr(Ops.TO_STRING, "Unhandled: ", "*state"))
@@ -101,7 +136,13 @@ class StateMachineTest {
     try (InProcessCluster cluster = InProcessCluster.create()) {
       final RamaModule module = new Module();
       cluster.launchModule(module, new LaunchConfig(4, 3));
-      Thread.sleep(3000);
+      final PState smState = cluster.clusterPState(Module.class.getName(), "$$sm");
+
+      Thread.sleep(10000);
+
+      StateMachineState<Module.SMState> state = smState.selectOne(Path.stay());
+      assertEquals(Module.SMState.FINAL, state.currentState);
+
     }
   }
 

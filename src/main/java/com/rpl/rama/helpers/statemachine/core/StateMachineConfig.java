@@ -66,8 +66,8 @@ public class StateMachineConfig<State extends Enum<State>,
     }
 
     public StateConfigBuilder<State, Signal> onTimeout(Duration timeoutDuration,
-        boolean requiresProgress,
-        State targetState) {
+                                                       boolean requiresProgress,
+                                                       State targetState) {
       StateConfig.OnTimeout<State> timeout = new StateConfig.OnTimeout<>();
       timeout.timeoutDuration = timeoutDuration;
       timeout.requiresProgress = requiresProgress;
@@ -77,7 +77,7 @@ public class StateMachineConfig<State extends Enum<State>,
     }
 
     public StateConfigBuilder<State, Signal> afterDuration(Duration duration,
-        State targetState) {
+                                                           State targetState) {
       StateConfig.AfterDuration<State> afterDuration
           = new StateConfig.AfterDuration<>();
       afterDuration.duration = duration;
@@ -87,10 +87,12 @@ public class StateMachineConfig<State extends Enum<State>,
     }
 
     public StateConfigBuilder<State, Signal> onAllSignalled(Signal signal,
-        State targetState) {
+                                                            Duration timeout,
+                                                            State targetState) {
       StateConfig.OnAllSignalled<State, Signal> onAllSignalled
           = new StateConfig.OnAllSignalled<>();
       onAllSignalled.signal = signal;
+      onAllSignalled.timeout = timeout;
       onAllSignalled.transitionTo  = targetState;
       transitions.add(onAllSignalled);
       return this;

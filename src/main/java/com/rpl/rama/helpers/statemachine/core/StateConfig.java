@@ -37,6 +37,7 @@ public class StateConfig<State extends Enum<State>,
                                            Signal extends Enum<Signal>>
       extends Transition<State> implements RamaSerializable {
     public Signal signal;
+    public Duration timeout;
     public TransitionType type() { return TransitionType.ALL_SIGNALLED; }
   }
 
