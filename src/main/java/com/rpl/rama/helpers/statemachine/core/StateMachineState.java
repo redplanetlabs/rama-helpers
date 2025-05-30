@@ -25,6 +25,11 @@ public class StateMachineState<State extends Enum<State>>
     return currentState;
   }
 
+  public StateMachineState<State> setCurrentState(State state) {
+    currentState = state;
+    return this;
+  }
+
   public Duration elapsedDuration() {
     return Duration.between(stateEnteredAt, Instant.now());
   }

@@ -15,6 +15,7 @@ import com.rpl.rama.Path;
 import com.rpl.rama.RamaSerializable;
 import com.rpl.rama.RamaModule.Setup;
 import com.rpl.rama.RamaModule.Topologies;
+import com.rpl.rama.helpers.statemachine.coordination.ExplicitTransition;
 import com.rpl.rama.helpers.statemachine.coordination.PartitionProgress;
 import com.rpl.rama.helpers.statemachine.coordination.SignalUpdate;
 import com.rpl.rama.helpers.statemachine.core.StateConfig.OnAllSignalled;
@@ -59,8 +60,8 @@ public class StateMachine<State extends Enum<State>,
   }
 
   public void define(Setup setup, Topologies topologies, State initState) {
-    setup.declareTickDepot("*smDepot", 100);  // 100m
-    setup.declareDepot("*smCoordDepot", Depot.disallow());  // 100ms
+    setup.declareTickDepot("*smDepot", 100);  // ms
+    setup.declareDepot("*smCoordDepot", Depot.disallow());
 
     MicrobatchTopology sm = topologies.microbatch("sm");
     StateMachineState<State> smState
@@ -125,6 +126,14 @@ public class StateMachine<State extends Enum<State>,
               .macro(extractJavaFields("*update", "*taskId"))
               .localTransform("$$smProgress",
                               Path.key("*taskId").termVal("*update")),
+
+              Case.create(
+                new Expr(Ops.IS_INSTANCE_OF,
+                         ExplicitTransition.class, "*update"))
+              .macro(extractJavaFields("*update", "*state"))
+              .localTransform(
+                "$$sm",
+                Path.term(StateMachineState<State>::setCurrentState, "*state")),
 
               Case.create(true)
               .each(Ops.LOG_ERROR, LOGGER,
@@ -296,10 +305,19 @@ public class StateMachine<State extends Enum<State>,
 
   public Block setSignal(final String taskIdVar, final String signalVar) {
     return Block
-        .each((RamaFunction2<Integer, Signal, SignalUpdate<Signal>>)
-              SignalUpdate::<Signal>mkSignalUpdate,
-              taskIdVar,
-              signalVar).out("*update")
+        .each((RamaFunction2<Integer, Signal, SignalUpdate<Signal>>) SignalUpdate::<Signal>mkSignalUpdate,
+            taskIdVar,
+            signalVar)
+        .out("*update")
         .depotPartitionAppend("*smCoordDepot", "*update");
   }
+
+  public Block transitionTo(final String stateValueVar) {
+    return Block
+        .each((RamaFunction1<State, ExplicitTransition<State>>) ExplicitTransition::<State>mkExplicitTransition,
+              stateValueVar)
+        .out("*update")
+        .depotPartitionAppend("*smCoordDepot", "*update");
+  }
+
 }

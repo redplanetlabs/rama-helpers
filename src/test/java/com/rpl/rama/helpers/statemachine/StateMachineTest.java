@@ -50,8 +50,8 @@ class StateMachineTest {
 
           .state(SMState.ALL_PROGRESS_TEST)
           .onAllSignalled(SMSignal.TEST_SIGNAL,
-			  Duration.ofSeconds(1),
-			  SMState.FINAL)
+                          Duration.ofSeconds(1),
+                          SMState.FINAL)
           .done()
 
           .state(SMState.FINAL)
@@ -97,31 +97,33 @@ class StateMachineTest {
               .each(Ops.LOG_DEBUG, LOGGER, "DURATION_TEST")
               .allPartition()
               .each(Ops.LOG_DEBUG, LOGGER, "DURATION_TEST DONE"),
+
               Case.create(
                 new Expr(Ops.EQUAL, "*state", SMState.ALL_PROGRESS_TEST))
               .each(Ops.LOG_DEBUG, LOGGER, "ALL_PROGRESS_TEST")
-	      .each(StateMachineState<SMState>::elapsedDuration,
-		    smStateVar).out("*stateDuration")
-	      .each(Duration::toMillis,
-		    "*stateDuration").out("*durationMillis")
+              .each(StateMachineState<SMState>::elapsedDuration,
+                    smStateVar).out("*stateDuration")
+              .each(Duration::toMillis,
+                    "*stateDuration").out("*durationMillis")
               .allPartition()
               .each(Ops.IDENTITY,
                     PartitionProgress.PartitionStatus.WORKING).out("*status")
-	      .each(Ops.CURRENT_TASK_ID).out("*localTaskId")
+              .each(Ops.CURRENT_TASK_ID).out("*localTaskId")
               .macro(stateMachine.madeProgress("*localTaskId",
-					       "*state",
-					       "*status"))
-	      .each(Ops.LOG_DEBUG, LOGGER, "XXX")
-	      .each(Ops.LOG_DEBUG, LOGGER,
-		    new Expr(Ops.TO_STRING,
-			     "durationMillis: ", "*durationMillis"))
-	      .ifTrue(new Expr(Ops.GREATER_THAN, "*durationMillis", 1000L),
-		      Block
-		      .each(Ops.LOG_DEBUG, LOGGER, "set signal")
-		      .each(Ops.IDENTITY, SMSignal.TEST_SIGNAL).out("*signal")
-		      .macro(stateMachine.setSignal("*localTaskId", "*signal"))
-		      .each(Ops.LOG_DEBUG, LOGGER, "set signal done"))
+                                               "*state",
+                                               "*status"))
+              .each(Ops.LOG_DEBUG, LOGGER, "XXX")
+              .each(Ops.LOG_DEBUG, LOGGER,
+                    new Expr(Ops.TO_STRING,
+                             "durationMillis: ", "*durationMillis"))
+              .ifTrue(new Expr(Ops.GREATER_THAN, "*durationMillis", 1000L),
+                      Block
+                      .each(Ops.LOG_DEBUG, LOGGER, "set signal")
+                      .each(Ops.IDENTITY, SMSignal.TEST_SIGNAL).out("*signal")
+                      .macro(stateMachine.setSignal("*localTaskId", "*signal"))
+                      .each(Ops.LOG_DEBUG, LOGGER, "set signal done"))
               .each(Ops.LOG_DEBUG, LOGGER, "ALL_PROGRESS_TEST DONE"),
+
               Case.create(new Expr(Ops.IDENTITY, Boolean.TRUE))
               .each(Ops.LOG_DEBUG, LOGGER,
                     new Expr(Ops.TO_STRING, "Unhandled: ", "*state"))

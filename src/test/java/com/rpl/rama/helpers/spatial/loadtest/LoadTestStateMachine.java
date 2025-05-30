@@ -1,26 +1,45 @@
-package com.rpl.rama.helpers.spaatial.loadtest;
+package com.rpl.rama.helpers.spatial.loadtest;
 
 import java.time.Duration;
 
+import com.rpl.rama.RamaSerializable;
 import com.rpl.rama.helpers.statemachine.core.StateMachine;
 import com.rpl.rama.helpers.statemachine.core.StateMachineConfig;
 
-public class LoadTestStateMachine {
+public class LoadTestStateMachine implements RamaSerializable {
   public enum LoadTestState {
-    LOAD_DATA, TIME_PROCESSING, QUERY_PERFORMANCE
+    DISABLE_MB, LOAD_DATA, TIME_PROCESSING, QUERY_PERFORMANCE, DONE
   }
 
-  public enum LoadTestSignal {
-    LOAD_COMPLETE
+  public enum LoadTestSignal implements RamaSerializable {
+    LOAD_COMPLETE, PROCESSING_COMPLETE
   }
 
   public StateMachine<LoadTestState, LoadTestSignal> stateMachine =
-      new StateMachineConfig.Builder<LoadTestState, LoadTestSignal>()
-      .state(LoadTestState.LOAD_DATA)
-      .onAllSignalled(LoadTestSignal.LOAD_COMPLETE,
-                      Duration.ofSeconds(3),
-                      LoadTestState.TIME_PROCESSING )
-      .done()
-      .build()
+      new StateMachine<LoadTestState, LoadTestSignal>(
+        new StateMachineConfig.Builder<LoadTestState, LoadTestSignal>()
+        .state(LoadTestState.DISABLE_MB)
+        .done()
+
+        .state(LoadTestState.LOAD_DATA)
+        .onAllSignalled(LoadTestSignal.LOAD_COMPLETE,
+                        Duration.ofSeconds(3),
+                        LoadTestState.TIME_PROCESSING )
+        .done()
+
+        .state(LoadTestState.TIME_PROCESSING)
+        .onAllSignalled(LoadTestSignal.PROCESSING_COMPLETE,
+                        Duration.ofSeconds(3),
+                        LoadTestState.TIME_PROCESSING )
+        .done()
+
+        .state(LoadTestState.QUERY_PERFORMANCE)
+        .afterDuration(Duration.ofSeconds(3), LoadTestState.DONE)
+        .done()
+
+        .state(LoadTestState.DONE)
+        .done()
+
+        .build())
       ;
 }
