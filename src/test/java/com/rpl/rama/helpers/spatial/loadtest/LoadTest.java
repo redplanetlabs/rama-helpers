@@ -6,6 +6,7 @@ import static org.junit.Assert.assertEquals;
 import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,6 +28,7 @@ import com.rpl.rama.ModuleInstanceInfo;
 import com.rpl.rama.PState;
 import com.rpl.rama.Path;
 import com.rpl.rama.RamaModule;
+import com.rpl.rama.RamaSerializable;
 import com.rpl.rama.helpers.ModuleUniqueIdPState;
 import com.rpl.rama.helpers.spatial.AddObject;
 import com.rpl.rama.helpers.spatial.MBR;
@@ -53,6 +55,8 @@ import org.geotools.feature.FeatureIterator;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import clojure.lang.Counted;
 
 public class LoadTest {
 
@@ -161,6 +165,68 @@ public class LoadTest {
     }
   }
 
+  public static class LoadData implements RamaSerializable {
+    public Boolean allProcessed;
+    public Boolean neverProcessed;
+    public long processingStart;
+    public long processingEnd;
+    public long numProcessed;
+
+    public LoadData() {
+      allProcessed = false;
+      neverProcessed = true;
+      processingStart = 0L;
+      processingEnd = 0L;
+      numProcessed = 0L;
+    }
+
+    LoadData someProcessed(int n) {
+      LOGGER.debug("someProcessed: n=" + n + ", this=" + this);
+      if (neverProcessed) {
+        processingStart = Instant.now().toEpochMilli();
+        allProcessed = false;
+        neverProcessed = false;
+      }
+      numProcessed = numProcessed + n;
+      return this;
+    }
+
+    LoadData noneProcessed() {
+      LOGGER.debug("noneProcessed: " + this);
+      if (!neverProcessed && !allProcessed) {
+        processingEnd = Instant.now().toEpochMilli();
+        allProcessed = true;
+      }
+      return this;
+    }
+
+    Boolean isAllProcessed() {
+      return !neverProcessed && allProcessed;
+    }
+
+    Double processingDuration() {
+      return Duration.between(
+        Instant.ofEpochMilli(processingStart),
+        Instant.ofEpochMilli(processingEnd)).toMillis()/1000.0;
+    }
+
+    Double processingRate() {
+      return numProcessed / processingDuration();
+    }
+
+    Long getNumProcessed() {
+      return numProcessed;
+    }
+
+    @Override
+    public String toString() {
+      return "LoadData [allProcessed=" + allProcessed +
+          ", neverProcessed=" + neverProcessed +
+          ", processingStart=" + processingStart +
+          ", processingEnd=" + processingEnd + "]";
+    }
+  }
+
   public static class SpatialModule implements RamaModule {
     ModuleUniqueIdPState idGenerator = new ModuleUniqueIdPState("$$objectId");
 
@@ -168,8 +234,12 @@ public class LoadTest {
     public void define(Setup setup, Topologies topologies) {
       setup.declareDepot("*depot", Depot.random());
 
+      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 100);
+
       MicrobatchTopology m = topologies.microbatch("m");
       m.pstate("$$object", PState.mapSchema(Long.class, Object.class));
+      m.pstate("$$loadData", LoadData.class)
+          .global().initialValue(new LoadData());
 
       // This is just a test convenience
       m.pstate("$$objectLookup", PState.mapSchema(Object.class, Long.class));
@@ -181,49 +251,64 @@ public class LoadTest {
       final int branchingFactor = 8;
       final int minChildren = 1;
       RTree rTree = new RTree(dimensions,
-          branchingFactor,
-          minChildren,
-          "test");
+                              branchingFactor,
+                              minChildren,
+                              "test");
       rTree.declare(topologies, m);
 
       // ETL
       m.source("*depot").out("*microbatch")
           .batchBlock(
-              Block
-                  .each(Ops.LOG_ERROR, LOGGER, "New Microbatch")
-                  .explodeMicrobatch("*microbatch").out("*v")
-                  .macro(idGenerator.genId("*objectId"))
-                  .macro(extractJavaFields("*v", "*bounds", "*object"))
-                  .each(Ops.LOG_ERROR,
-                      LOGGER,
-                      new Expr(Ops.TO_STRING,
-                          "objectId=", "*objectId",
-                          ", MB Process: ", "*v"))
-                  .hashPartition("$$object", "*objectId")
-                  .localTransform("$$object",
-                      Path.key("*objectId").termVal("*object"))
+            Block
+            .each(Ops.LOG_TRACE, LOGGER, "New Microbatch")
+            .explodeMicrobatch("*microbatch").out("*v")
+            .macro(idGenerator.genId("*objectId"))
+            .macro(extractJavaFields("*v", "*bounds", "*object"))
+            .each(Ops.LOG_TRACE,
+                  LOGGER,
+                  new Expr(Ops.TO_STRING,
+                           "objectId=", "*objectId",
+                           ", MB Process: ", "*v"))
+            .hashPartition("$$object", "*objectId")
+            .localTransform("$$object",
+                            Path.key("*objectId").termVal("*object"))
 
-                  .hashPartition("$$objectLookup", "*object")
-                  .localTransform("$$objectLookup",
-                      Path.key("*object").termVal("*objectId"))
-                  .each(Ops.PRINTLN,
-                      "Added object",
-                      "*objectId",
-                      "*object",
-                      "*bounds")
-                  .globalPartition()
-                  .agg(Agg.list(new Expr(Ops.TUPLE,
-                      "*bounds",
-                      "*objectId")))
-                  .out("$$objects"))
-          .macro(
+            .hashPartition("$$objectLookup", "*object")
+            .localTransform("$$objectLookup",
+                            Path.key("*object").termVal("*objectId"))
+            .each(Ops.LOG_TRACE, LOGGER,
+                  new Expr(Ops.TO_STRING,
+                           "Added object", "*objectId", "*object", "*bounds"))
+            .globalPartition()
+            .agg(Agg.list(new Expr(Ops.TUPLE,
+                                   "*bounds",
+                                   "*objectId")))
+            .out("$$objects")
+            .localSelect("$$objects",
+                         Path.stay().view(Counted::count)).out("*numObjects")
+            .each(Ops.LOG_DEBUG, LOGGER,
+                  new Expr(Ops.TO_STRING, "numObjects: ", "*numObjects"))
+            .ifTrue(
+              new Expr(Ops.IS_POSITIVE, "*numObjects"),
+              Block.localTransform(
+                "$$loadData",
+                Path.term(LoadData::someProcessed, "*numObjects")),
+              Block.localTransform("$$loadData", Path.term(LoadData::noneProcessed)))
+            .macro(
               rTree.handleModifications(
-                  "$$objects",
-                  (List<Object> data, RTreeCollector collector) -> {
-                    collector.addObject(
-                        (MBR) data.get(0),
-                        (Long) data.get(1));
-                  }));
+                "$$objects",
+                (List<Object> data, RTreeCollector collector) -> {
+                  collector.addObject(
+                    (MBR) data.get(0),
+                    (Long) data.get(1));
+                })));
+
+      topologies.query("loadData").out("*finalLoadData")
+          .each(Ops.LOG_TRACE, LOGGER,"allProcessed")
+          .globalPartition()
+          .localSelect("$$loadData", Path.stay()).out("*loadData")
+          .originPartition()
+          .agg(Agg.last("*loadData")).out("*finalLoadData");
     }
   }
 
@@ -236,12 +321,12 @@ public class LoadTest {
     static volatile RamaFunction3<String,String,Boolean, Boolean> pauseFn = null;
 
     static Boolean setTopologyActive(String moduleName,
-				     String topologyName,
-				     Boolean activeFlag) {
+                                     String topologyName,
+                                     Boolean activeFlag) {
       if (pauseFn == null) {
-	RamaClient.setTopologyActive(moduleName, topologyName, activeFlag);
+        RamaClient.setTopologyActive(moduleName, topologyName, activeFlag);
       } else {
-	pauseFn.invoke(moduleName, topologyName, activeFlag);
+        pauseFn.invoke(moduleName, topologyName, activeFlag);
       }
       return true;
     }
@@ -256,6 +341,7 @@ public class LoadTest {
 
       setup.declareObject("*loader", new Loader());
       setup.clusterDepot("*depot2", SpatialModule.class.getName(), "*depot");
+      setup.clusterQuery("*loadDataQuery", SpatialModule.class.getName(), "loadData");
 
       MicrobatchTopology m = topologies.microbatch("m");
 
@@ -267,7 +353,7 @@ public class LoadTest {
           .batchBlock(
             Block
             .explodeMicrobatch("*microbatch").out("*mbValue")
-	    .each(Ops.CURRENT_TASK_ID).out("*localTaskId")
+            .each(Ops.CURRENT_TASK_ID).out("*localTaskId")
             .directPartition(0)
             .localSelect("$$sm", Path.stay()).out(smStateVar)
             .each(StateMachineState<LoadTestStateMachine.LoadTestState>::getCurrentState,
@@ -280,22 +366,18 @@ public class LoadTest {
                 new Expr(Ops.EQUAL,
                          "*state",
                          LoadTestStateMachine.LoadTestState.DISABLE_MB))
-	      .each(Module::setTopologyActive, spatialModuleName, "m", false)
-	      .each(Ops.LOG_DEBUG, LOGGER, "Disabled topology")
-	      .each(Ops.IDENTITY,
-		    LoadTestStateMachine.LoadTestState.LOAD_DATA)
-	      .out("*nextState")
-	      .macro(statemachine.stateMachine.transitionTo("*nextState")),
+              .each(Module::setTopologyActive, spatialModuleName, "m", false)
+              .each(Ops.LOG_DEBUG, LOGGER, "Disabled topology")
+              .each(Ops.IDENTITY,
+                    LoadTestStateMachine.LoadTestState.LOAD_DATA)
+              .out("*nextState")
+              .macro(statemachine.stateMachine.transitionTo("*nextState")),
 
               Case.create(
                 new Expr(Ops.EQUAL,
                          "*state",
                          LoadTestStateMachine.LoadTestState.LOAD_DATA))
               .each(Ops.LOG_DEBUG, LOGGER, "LOAD DATA")
-	      .each(Ops.MODULE_INSTANCE_INFO).out("*mii")
-	      .each(ModuleInstanceInfo::getModuleName, "*mii").out("*module-name")
-	      .each(Module::setTopologyActive, spatialModuleName, "m", true)
-
               .allPartition()
               .each(LoadTest::loadData, "*loader").out("*result")
               .macro(extractJavaFields("*result", "*addObjects", "*done"))
@@ -313,7 +395,7 @@ public class LoadTest {
                     new Expr(Iterator<List<LoadDataResult>>::hasNext, "*iter"),
                     Block
                     .each(Iterator<List<LoadDataResult>>::next, "*iter").out("*addObject")
-		    .hashPartition("*depot2", "*addObject")
+                    .hashPartition("*depot2", "*addObject")
                     .depotPartitionAppend("*depot2", "*addObject")
                     .continueLoop("*iter"))))
               .each(Ops.LOG_DEBUG, LOGGER, "LOAD DATA DONE"),
@@ -322,13 +404,35 @@ public class LoadTest {
                 new Expr(Ops.EQUAL,
                          "*state",
                          LoadTestStateMachine.LoadTestState.TIME_PROCESSING))
-              .each(Ops.LOG_DEBUG, LOGGER, "TIME_PROCESSING"),
+              .each(Ops.LOG_DEBUG, LOGGER, "TIME_PROCESSING")
+              .each(Module::setTopologyActive, spatialModuleName, "m", true)
+              .invokeQuery("*loadDataQuery").out("*loadData")
+              .each(Ops.LOG_INFO, LOGGER,
+                    new Expr(Ops.TO_STRING, "loadData: ", "*loadData"))
+              .ifTrue(
+                new Expr(LoadData::isAllProcessed, "*loadData"),
+                Block
+                .each(Ops.IDENTITY,
+                      LoadTestStateMachine.LoadTestState.QUERY_PERFORMANCE)
+                .out("*nextState")
+                .macro(statemachine.stateMachine.transitionTo("*nextState"))
+                .each(Ops.LOG_INFO, LOGGER,
+                      new Expr(Ops.TO_STRING,
+                               "Processed: ",
+                               new Expr(LoadData::getNumProcessed, "*loadData"),
+                               " records in ",
+                               new Expr(LoadData::processingDuration, "*loadData"),
+                               "secs, processing rate (records/sec): ",
+                               new Expr(LoadData::processingRate, "*loadData")))),
 
               Case.create(
                 new Expr(Ops.EQUAL,
                          "*state",
                          LoadTestStateMachine.LoadTestState.QUERY_PERFORMANCE))
-              .each(Ops.LOG_DEBUG, LOGGER, "QUERY_PERFORMANCE"),
+              .each(Ops.LOG_DEBUG, LOGGER, "QUERY_PERFORMANCE")
+              .each(Ops.IDENTITY, LoadTestStateMachine.LoadTestState.DONE)
+              .out("*nextState")
+              .macro(statemachine.stateMachine.transitionTo("*nextState")),
 
               Case.create(
                 new Expr(Ops.EQUAL,
@@ -344,39 +448,40 @@ public class LoadTest {
     try (InProcessCluster cluster = InProcessCluster.create()) {
       LOGGER.error("Launching spatial index module");
       final RamaModule spatialModule = new SpatialModule();
-      cluster.launchModule(spatialModule, new LaunchConfig(1, 1));
+      cluster.launchModule(spatialModule, new LaunchConfig(2, 2));
+
 
       LOGGER.error("Launching perf test module");
       Module.pauseFn =
-	(String moduleName, String topologyName, Boolean activeFlag) -> {
-	if (activeFlag) {
-	  LOGGER.error("Enable topology, moduleName: "+moduleName
-		       + ", topologyName: "+topologyName);
-	  cluster.resumeMicrobatchTopology(moduleName, topologyName);
-	} else {
-	  LOGGER.error("Disable topology, moduleName: "+moduleName
-		       + ", topologyName: "+topologyName);
-	  cluster.pauseMicrobatchTopology(moduleName, topologyName);
-	}
-	return activeFlag;
+        (String moduleName, String topologyName, Boolean activeFlag) -> {
+        if (activeFlag) {
+          LOGGER.error("Enable topology, moduleName: "+moduleName
+                       + ", topologyName: "+topologyName);
+          cluster.resumeMicrobatchTopology(moduleName, topologyName);
+        } else {
+          LOGGER.error("Disable topology, moduleName: "+moduleName
+                       + ", topologyName: "+topologyName);
+          cluster.pauseMicrobatchTopology(moduleName, topologyName);
+        }
+        return activeFlag;
       };
 
       final RamaModule module = new Module();
       cluster.launchModule(module, new LaunchConfig(1, 1));
       LOGGER.error("Launched perf test module");
       final PState smState =
-	cluster.clusterPState(Module.class.getName(), "$$sm");
+        cluster.clusterPState(Module.class.getName(), "$$sm");
       Thread.sleep(30000);
 
       LOGGER.error("Start waiting for test completion");
       StateMachineState<LoadTestStateMachine.LoadTestState> state = null;
-      for (int i=0; i<500; i=i+1) {
-	 state = smState.selectOne(Path.stay());
-	 if (state.currentState == LoadTestStateMachine.LoadTestState.DONE) {
-	   break;
-	 }
-	 LOGGER.error("Waiting for state machine to complete");
-	 Thread.sleep(10000);
+      for (int i=0; i<1000; i=i+1) {
+         state = smState.selectOne(Path.stay());
+         if (state.currentState == LoadTestStateMachine.LoadTestState.DONE) {
+           break;
+         }
+         LOGGER.error("Waiting for state machine to complete");
+         Thread.sleep(10000);
       }
       assertEquals(LoadTestStateMachine.LoadTestState.DONE, state.currentState);
     }

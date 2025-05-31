@@ -357,14 +357,14 @@ public class RTree implements RamaSerializable {
   private static Object updateNodeChildren(Node node,
                                            List<Node>newSiblings,
                                            PersistentVector groupedChildren) {
-    LOGGER.error("updateNodeChildren size: " +
+    LOGGER.trace("updateNodeChildren size: " +
                  newSiblings.size() + ", " +
                  groupedChildren.size());
     node.children = Vector.into(Vector.empty(), (List)groupedChildren.get(0));
-    LOGGER.error("size: "+ newSiblings.size() + ", " + groupedChildren.size());
+    LOGGER.trace("size: "+ newSiblings.size() + ", " + groupedChildren.size());
     for (int i=0; i< newSiblings.size(); ++i) {
       Node currentNode = newSiblings.get(i);
-      LOGGER.error("i: "+ i);
+      LOGGER.trace("i: "+ i);
       PersistentVector children = Vector.into(Vector.empty(),
                                               (List)groupedChildren.get(i + 1));
       currentNode.children = children;
@@ -618,13 +618,13 @@ public class RTree implements RamaSerializable {
   // }
 
   private static List<Object> conjList(List<Object> l, Object n) {
-    LOGGER.debug("conjList", n.toString());
+    LOGGER.trace("conjList", n.toString());
     l.add(n);
     return l;
   }
 
   private static <T> List<T> conjList1(List<T> l, T n) {
-    LOGGER.debug("conjList", n.toString());
+    LOGGER.trace("conjList", n.toString());
     l.add(n);
     return l;
   }
@@ -854,14 +854,16 @@ public class RTree implements RamaSerializable {
         .each(Ops.LOG_DEBUG, LOGGER, "buildModTable")
         .macro(rootNode("*rootNode"))
         .macro(explode(microbatchVar, "*data"))
-        .each(Ops.PRINTLN, "DATA", "*data")
+        .each(Ops.LOG_TRACE, LOGGER,
+              new Expr(Ops.TO_STRING, "DATA ", "*data"))
         .each((T data, OutputCollector collector) -> {
             RTreeCollector c = new RTreeCollector(collector);
             dataConvertor.invoke(data, c);
           },
           "*data").out("*modification")
 
-        .each(Ops.PRINTLN, "Modification", "*modification")
+        .each(Ops.LOG_TRACE, LOGGER,
+              new Expr(Ops.TO_STRING, "Modification ", "*modification"))
         .macro(extractJavaFields("*modification", "*bounds", "*objectId"))
         // Find the node where this would be located
         // TODO parallel descent?
@@ -884,7 +886,7 @@ public class RTree implements RamaSerializable {
           .allPartition()
           .localSelect(modTableVar, Path.stay()).out("*elems")
           .each(Ops.SIZE, "*elems").out("*size")
-          .each(Ops.LOG_DEBUG,
+          .each(Ops.LOG_TRACE,
                 LOGGER,
                 new Expr(Ops.TO_STRING,
                          "size: ", "*size",
@@ -909,7 +911,7 @@ public class RTree implements RamaSerializable {
           new Expr(Ops.IS_NULL, tmpNodeVar),
           Block.directPartition(rootTaskIdVar).macro(rootNode(nodeVar)),
           Block.each(Ops.IDENTITY, tmpNodeVar).out(nodeVar))
-        .each(Ops.LOG_DEBUG, LOGGER,
+        .each(Ops.LOG_TRACE, LOGGER,
               new Expr(Ops.TO_STRING,
                        "lookup nodeId: ", nodeIdVar, ", node: ", nodeVar))
         .macro(
@@ -936,7 +938,7 @@ public class RTree implements RamaSerializable {
     final RTreeConvertorFunction<T> dataConvertor) {
 
     return Block
-        .each(Ops.LOG_DEBUG, LOGGER, "handleModifications")
+        .each(Ops.LOG_TRACE, LOGGER, "handleModifications")
         .each(Ops.CURRENT_TASK_ID).out("*taskId")
         .batchBlock(Block.macro(buildModTable(microbatchVar,
                                               dataConvertor,
@@ -950,26 +952,26 @@ public class RTree implements RamaSerializable {
           .loop(
             Block
             .yieldIfOvertime()
-            .each(Ops.LOG_DEBUG, LOGGER, "handleModifications loop body start")
+            .each(Ops.LOG_TRACE, LOGGER, "handleModifications loop body start")
             .macro(hasNoMoreModesPred("$$modTable", "*hasNoMoreOps"))
             .ifTrue(
               "*hasNoMoreOps",
               // Nothing left to do, all modifications handled.
               Block
-              .each(Ops.LOG_DEBUG, LOGGER, "Operations loop complete, emitting")
+              .each(Ops.LOG_TRACE, LOGGER, "Operations loop complete, emitting")
               .emitLoop(),
               // Perform changes to next node
               Block
               .batchBlock(
                 Block
                 .localSelect("$$modTable", Path.first()).out("*nodeOps")
-                .each(Ops.LOG_DEBUG,
+                .each(Ops.LOG_TRACE,
                       LOGGER,
                       new Expr(Ops.TO_STRING, "nodeOps: ", "*nodeOps"))
                 .each(Ops.FIRST, "*nodeOps").out("*opNodeId")
                 .each(Ops.LAST, "*nodeOps").out("*nodeOpsList")
                 .macro(lookupNode("*taskId", "*opNodeId", "*currentNode"))
-                .each(Ops.LOG_DEBUG,
+                .each(Ops.LOG_TRACE,
                       LOGGER,
                       new Expr(Ops.TO_STRING, "nodeOpsList: ", "nodeOpsList"))
                 .macro(updateNode(M,
@@ -977,7 +979,7 @@ public class RTree implements RamaSerializable {
                                   "*currentNode",
                                   "*nodeOpsList",
                                   "*newSiblings"))
-                .each(Ops.LOG_DEBUG,
+                .each(Ops.LOG_TRACE,
                       LOGGER,
                       new Expr(Ops.TO_STRING,
                                "UpdateNodes new siblings: ", "*newSiblings"))
@@ -987,7 +989,7 @@ public class RTree implements RamaSerializable {
                   new Expr(Ops.EQUAL, 0, "*numSiblings"),
                   // No splits creating new siblings
                   Block
-                  .each(Ops.LOG_DEBUG, LOGGER, "no new siblings")
+                  .each(Ops.LOG_TRACE, LOGGER, "no new siblings")
                   .macro(outputNode("*taskId", "*currentNode"))
                   .each(Ops.IDENTITY, null).out("*newOp")
                   .each(Node::parentId, "*currentNode").out("*parentId")
@@ -999,7 +1001,7 @@ public class RTree implements RamaSerializable {
                     // the original node was root - we need a new
                     // root node.
                     Block
-                    .each(Ops.LOG_DEBUG, LOGGER, "node was root")
+                    .each(Ops.LOG_TRACE, LOGGER, "node was root")
                     .each(Node::nodeId, "*currentNode").out("*nodeId")
                     .each(Node::bounds, "*currentNode").out("*nodeBounds")
                     .macro(idGenerator.genId("*parentId"))
@@ -1009,14 +1011,14 @@ public class RTree implements RamaSerializable {
                           "*parent",
                           "*nodeBounds",
                           "*nodeId").out("*fred")
-                    .each(Ops.LOG_DEBUG, LOGGER,
+                    .each(Ops.LOG_TRACE, LOGGER,
                           "new root created")
-                    .each(Ops.LOG_DEBUG, LOGGER,
+                    .each(Ops.LOG_TRACE, LOGGER,
                           new Expr(Ops.TO_STRING,
                                    "new root created, taskId: ",
                                    "*taskId"))
                     .directPartition("*taskId")
-                    .each(Ops.LOG_DEBUG, LOGGER,
+                    .each(Ops.LOG_TRACE, LOGGER,
                           new Expr(Ops.TO_STRING,
                                    "Write new root: ", "*parent"))
                     .directPartition("*taskId")
@@ -1031,7 +1033,7 @@ public class RTree implements RamaSerializable {
                     .macro(writeNode("*nodeId", "*currentNode"))
                     .each(Node::parentId, "*currentNode").out("*parentId")
                     .each(Ops.IDENTITY,"*currentNode").out("*parent")))
-                .each(Ops.LOG_DEBUG,
+                .each(Ops.LOG_TRACE,
                       LOGGER,
                       new Expr(Ops.TO_STRING, "parent node: ", "*parent"))
 
@@ -1043,7 +1045,7 @@ public class RTree implements RamaSerializable {
                                       "*opNodeId",
                                       "*parentId",
                                       "*newOps"))
-                .each(Ops.LOG_DEBUG,
+                .each(Ops.LOG_TRACE,
                       LOGGER,
                       new Expr(Ops.TO_STRING,
                                "End of loop body",
@@ -1051,7 +1053,7 @@ public class RTree implements RamaSerializable {
                                ", Parent Id: ", "*parentId",
                                ", newOps: ", "*newOps")))
               .continueLoop()))
-          .each(Ops.LOG_DEBUG, LOGGER,  "Loop complete")
+          .each(Ops.LOG_TRACE, LOGGER,  "Loop complete")
 
           // TODO make this conditional on it having changed
           .batchBlock(Block.macro(propagateRootNode())));
@@ -1074,7 +1076,7 @@ public class RTree implements RamaSerializable {
                   .each(Node::bounds, "*newSibling").out("*newBounds")
                   .each(Node::nodeId, "*newSibling").out("*newId")
                   .each(Node::setParentId, "*newSibling", "*parentId")
-                  .each(Ops.LOG_DEBUG,
+                  .each(Ops.LOG_TRACE,
                         LOGGER,
                         new Expr(Ops.TO_STRING,
                                  "Saving sibling: ", "*newSibling"))
@@ -1082,11 +1084,11 @@ public class RTree implements RamaSerializable {
                   .each(RTreeCollector.AddObject::mkAddObject,
                         "*newBounds",
                         "*newId").out("*newOp")
-                  .each(Ops.LOG_ERROR, LOGGER,
+                  .each(Ops.LOG_TRACE, LOGGER,
                         new Expr(Ops.TO_STRING,
                                  "Ops: ", "*ops", " ",
                                  new Expr(Ops.CLASS, "*ops")))
-                  .each(Ops.LOG_ERROR, LOGGER,
+                  .each(Ops.LOG_TRACE, LOGGER,
                         new Expr(Ops.TO_STRING, "newOp: ", "*newOp"))
                   .each(RTree::<RTreeCollector.AddObject>conjList,
                         "*ops",

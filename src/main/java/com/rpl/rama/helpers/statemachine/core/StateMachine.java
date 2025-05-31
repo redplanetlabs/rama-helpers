@@ -74,7 +74,7 @@ public class StateMachine<State extends Enum<State>,
     final String newStateVar = Helpers.genVar("newState");
     sm.source("*smDepot").batchBlock(
       Block
-      .each(Ops.LOG_DEBUG, LOGGER, "StateMachine coord")
+      .each(Ops.LOG_TRACE, LOGGER, "StateMachine coord")
       .localSelect("$$sm", Path.stay()).out(smStateVar)
       .each(StateMachineState<State>::getCurrentState,
             smStateVar).out("*stateValue")
@@ -91,7 +91,7 @@ public class StateMachine<State extends Enum<State>,
         .ifTrue("*hasNext",
                 Block.each(Iterator<Transition<State>>::next,
                            "*transitionIter").out("*transition")
-                .each(Ops.LOG_DEBUG, LOGGER,
+                .each(Ops.LOG_TRACE, LOGGER,
                       new Expr(Ops.TO_STRING,
                                "Check transition: ", "*transition"))
                 .macro(nextState(smStateVar, "*transition", newStateVar))
@@ -109,7 +109,7 @@ public class StateMachine<State extends Enum<State>,
               new Expr(Ops.TO_STRING, "Process update", "*update"))
         .cond(Case.create(
           new Expr(Ops.IS_INSTANCE_OF, SignalUpdate.class, "*update"))
-              .each(Ops.LOG_DEBUG, LOGGER,
+              .each(Ops.LOG_TRACE, LOGGER,
                     new Expr(Ops.TO_STRING,
                              "process signal update: ", "*update"))
               .macro(extractJavaFields("*update", "*taskId", "*signal"))
@@ -120,7 +120,7 @@ public class StateMachine<State extends Enum<State>,
                 new Expr(Ops.IS_INSTANCE_OF,
                          PartitionProgress.class,
                          "*update"))
-              .each(Ops.LOG_DEBUG, LOGGER,
+              .each(Ops.LOG_TRACE, LOGGER,
                     new Expr(Ops.TO_STRING,
                              "process progress update: ", "*update"))
               .macro(extractJavaFields("*update", "*taskId"))
@@ -143,10 +143,10 @@ public class StateMachine<State extends Enum<State>,
         ;
 
     topologies.query("partitionStates").out("*allProgress")
-        .each(Ops.LOG_DEBUG, LOGGER,"partitionStates")
+        .each(Ops.LOG_TRACE, LOGGER,"partitionStates")
         .allPartition()
         .localSelect("$$smProgress", Path.stay()).out("*progress")
-        .each(Ops.LOG_DEBUG, LOGGER,
+        .each(Ops.LOG_TRACE, LOGGER,
               new Expr(Ops.TO_STRING, "partitionStates: ", "*progress"))
         .each(Ops.CURRENT_TASK_ID).out("*taskId")
         .originPartition()
@@ -159,7 +159,7 @@ public class StateMachine<State extends Enum<State>,
     return Block
         .each((RamaFunction1<Transition<State>, TransitionType>)
               Transition::type, transitionVar).out("*type")
-        .each(Ops.LOG_DEBUG, LOGGER,
+        .each(Ops.LOG_TRACE, LOGGER,
               new Expr(Ops.TO_STRING,
                        "nextState for transition: ", transitionVar,
                        ", type: ", "*type"))
@@ -190,7 +190,7 @@ public class StateMachine<State extends Enum<State>,
               smStateVar).out("*elapsedDuration")
         .each(StateConfig.AfterDuration<State>::isExpired,
               transitionVar, "*elapsedDuration").out("*isExpired")
-        .each(Ops.LOG_DEBUG, LOGGER,
+        .each(Ops.LOG_TRACE, LOGGER,
               new Expr(Ops.TO_STRING, "duratuion: ", "*elapsedDuration",
                        ", isExpired: ", "*isExpired",
                        ", transition: ", transitionVar))
@@ -198,7 +198,7 @@ public class StateMachine<State extends Enum<State>,
                 Block
                 .each(Transition<State>::targetState,
                       transitionVar).out(newStateVar)
-                .each(Ops.LOG_DEBUG, LOGGER,
+                .each(Ops.LOG_TRACE, LOGGER,
               new Expr(Ops.TO_STRING, "duratuion expired: ", newStateVar)),
                 Block.each(Ops.IDENTITY, null).out(newStateVar));
   }
@@ -212,7 +212,7 @@ public class StateMachine<State extends Enum<State>,
     if (signals == null) {
       return false;
     } else {
-      LOGGER.debug("Signals: ", signals.toString());
+      LOGGER.trace("Signals: " + signals.toString());
 
       return ((Collection<Signal>)(signals.values()))
           .stream()
@@ -233,7 +233,7 @@ public class StateMachine<State extends Enum<State>,
     if (progress == null) {
       return false;
     } else {
-      LOGGER.debug("Progress: ", progress.toString());
+      LOGGER.trace("Progress: " + progress.toString());
 
       return ((Collection<PartitionProgress<State>>)(progress.values()))
           .stream()
@@ -248,12 +248,12 @@ public class StateMachine<State extends Enum<State>,
                              final String transitionVar,
                              final String newStateVar) {
     return Block
-        .each(Ops.LOG_DEBUG, LOGGER, "Check allSignalled")
+        .each(Ops.LOG_TRACE, LOGGER, "Check allSignalled")
         .localSelect("$$smProgress", Path.stay()).out("*allProgress")
         .localSelect("$$smSignal", Path.stay()).out("*allSignals")
-        .each(Ops.LOG_DEBUG, LOGGER,
+        .each(Ops.LOG_TRACE, LOGGER,
               new Expr(Ops.TO_STRING, "all progress: ", "*allProgress"))
-        .each(Ops.LOG_DEBUG, LOGGER,
+        .each(Ops.LOG_TRACE, LOGGER,
               new Expr(Ops.TO_STRING, "all signals: ", "*allSignals"))
         .each(
           (RamaFunction2<StateConfig.OnAllSignalled<State, Signal>,
@@ -266,7 +266,7 @@ public class StateMachine<State extends Enum<State>,
           Block
           .each(Transition<State>::targetState,
                 transitionVar).out(newStateVar)
-          .each(Ops.LOG_DEBUG, LOGGER,
+          .each(Ops.LOG_TRACE, LOGGER,
                 new Expr(Ops.TO_STRING, "duratuion expired: ", newStateVar)),
           Block
           .each(
@@ -285,7 +285,7 @@ public class StateMachine<State extends Enum<State>,
                             final String stateValueVar,
                             final String statusVar) {
     return Block
-        .each(Ops.LOG_DEBUG, LOGGER,
+        .each(Ops.LOG_TRACE, LOGGER,
               new Expr(Ops.TO_STRING,
                        "madeProgress task: ", taskIdVar,
                        ", state: ", stateValueVar,
@@ -296,11 +296,11 @@ public class StateMachine<State extends Enum<State>,
                PartitionProgress<State>>)
               PartitionProgress::<State>mkPartitionProgress,
             taskIdVar, stateValueVar, statusVar).out("*progress")
-        .each(Ops.LOG_DEBUG, LOGGER,
+        .each(Ops.LOG_TRACE, LOGGER,
               new Expr(Ops.TO_STRING,
                        "madeProgress progress: ", "*progress"))
         .depotPartitionAppend("*smCoordDepot", "*progress")
-        .each(Ops.LOG_DEBUG, LOGGER, "madeProgress done");
+        .each(Ops.LOG_TRACE, LOGGER, "madeProgress done");
   }
 
   public Block setSignal(final String taskIdVar, final String signalVar) {
