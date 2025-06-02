@@ -29,7 +29,7 @@ public class RamaClient {
   public static Boolean setTopologyActive(final String moduleName,
                                           final String topologyName,
                                           final Boolean state) {
-    _set_topology_active.invoke(moduleName, topologyName, state ? "true" : "false");
+    _set_topology_active.invoke(moduleName, topologyName, state ? "true" : "false", "--useInternalHostnames");
     return state;
   }
 

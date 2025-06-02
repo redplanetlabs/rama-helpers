@@ -164,7 +164,7 @@
                 <version>2.22.0</version>
                 <configuration>
                     <trimStackTrace>false</trimStackTrace>
-                    <skipTests>false</skipTests>
+                    <!-- <skipTests>false</skipTests> -->
 		    <systemPropertyVariables>
 		      <clojure.tools.logging.factory>clojure.tools.logging.impl/log4j2-factory</clojure.tools.logging.factory>
 		    </systemPropertyVariables>
@@ -193,7 +193,26 @@
             					</goals>
           				</execution>
           			</executions>
-        		</plugin>
+            </plugin>
+	    <plugin>
+	      <groupId>org.apache.maven.plugins</groupId>
+	      <artifactId>maven-assembly-plugin</artifactId>
+	      <version>3.6.0</version>
+	      <configuration>
+		<descriptors>
+		  <descriptor>src/assembly/fat-jar-with-tests.xml</descriptor>
+		</descriptors>
+	      </configuration>
+	      <executions>
+		<execution>
+		  <id>make-assembly</id>
+		  <phase>package</phase>
+		  <goals>
+		    <goal>single</goal>
+		  </goals>
+		</execution>
+	      </executions>
+	    </plugin>
         </plugins>
         <resources>
             <resource>

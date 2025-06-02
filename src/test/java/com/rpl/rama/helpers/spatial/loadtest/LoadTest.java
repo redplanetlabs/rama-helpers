@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -62,12 +63,12 @@ public class LoadTest {
 
   public static final Logger LOGGER = LoggerFactory.getLogger(LoadTest.class);
 
-  public static class Loader implements TaskGlobalObject {
+  public static class TigerLoader implements Loader, TaskGlobalObject {
     public Set<CompletableFuture<Map<String, Object>>> pending;
     public ShapefileDataStore dataStore;
     public FeatureIterator<SimpleFeature>  features;
 
-    public Loader() {
+    public TigerLoader() {
       pending = ConcurrentHashMap.newKeySet();
     }
 
@@ -118,33 +119,15 @@ public class LoadTest {
         dataStore.dispose();
       }
     }
-  }
 
-  public static class LoadDataResult {
-    public Boolean done;
-    public List<AddObject> addObjects;
-
-    public LoadDataResult(Boolean done, List<AddObject> addObjects) {
-      this.addObjects = addObjects;
-      this.done = done;
-    }
-
-    @Override
-    public String toString() {
-      return "LoadDataResult [done=" + done +
-          ", addObjects=" + addObjects + "]";
-    }
-  }
-
-
-  static LoadDataResult loadData(final Loader loader) {
-    if (loader.features != null && loader.features.hasNext()) {
-      final List<AddObject> ops = new ArrayList<>();
-      final String nameAttribute = "NAME20";
-      final int numToAppend = 100;
-      for (int i = 0; i <= numToAppend; i = i + 1) {
-          if (loader.features.hasNext()) {
-            SimpleFeature feature = loader.features.next();
+    public LoadDataResult loadData(Random random) {
+      if (features != null && features.hasNext()) {
+        final List<AddObject> ops = new ArrayList<>();
+        final String nameAttribute = "NAME20";
+        final int numToAppend = 100;
+        for (int i = 0; i <= numToAppend; i = i + 1) {
+          if (features.hasNext()) {
+            SimpleFeature feature = features.next();
             BoundingBox bounds = feature.getBounds();
 
             MBR mbr = new MBR(new double[]{bounds.getMinX(), bounds.getMinY()},
@@ -159,11 +142,40 @@ public class LoadTest {
             // loader.pending.add(cf);
           }
         }
-      return new LoadDataResult(false, ops);
-    } else {
-      return new LoadDataResult(true, null);
+        return new LoadDataResult(false, ops);
+      } else {
+        return new LoadDataResult(true, null);
+      }
     }
   }
+
+  // static LoadDataResult loadTigerData(final Loader loader) {
+  //   if (loader.features != null && loader.features.hasNext()) {
+  //     final List<AddObject> ops = new ArrayList<>();
+  //     final String nameAttribute = "NAME20";
+  //     final int numToAppend = 100;
+  //     for (int i = 0; i <= numToAppend; i = i + 1) {
+  //         if (loader.features.hasNext()) {
+  //           SimpleFeature feature = loader.features.next();
+  //           BoundingBox bounds = feature.getBounds();
+
+  //           MBR mbr = new MBR(new double[]{bounds.getMinX(), bounds.getMinY()},
+  //                             new double[]{bounds.getMaxX(), bounds.getMaxY()});
+
+  //           ops.add(new AddObject(mbr, feature.getAttribute(nameAttribute)));
+  //           // CompletableFuture<Map<String, Object>> cf =
+  //           //     depot.appendAsync(
+  //           //       new AddObject(mbr, feature.getAttribute(nameAttribute)),
+  //           //       AckLevel.NONE);
+  //           // cf.thenApply((_v) -> loader.pending.remove(cf));
+  //           // loader.pending.add(cf);
+  //         }
+  //       }
+  //     return new LoadDataResult(false, ops);
+  //   } else {
+  //     return new LoadDataResult(true, null);
+  //   }
+  // }
 
   public static class LoadData implements RamaSerializable {
     public Boolean allProcessed;
@@ -223,7 +235,8 @@ public class LoadTest {
       return "LoadData [allProcessed=" + allProcessed +
           ", neverProcessed=" + neverProcessed +
           ", processingStart=" + processingStart +
-          ", processingEnd=" + processingEnd + "]";
+          ", processingEnd=" + processingEnd +
+          ", numProcessed=" + numProcessed + "]";
     }
   }
 
@@ -316,6 +329,8 @@ public class LoadTest {
 
   public static class Module implements RamaModule {
 
+    static long seed = 0;
+
     LoadTestStateMachine statemachine = new LoadTestStateMachine();
 
     static volatile RamaFunction3<String,String,Boolean, Boolean> pauseFn = null;
@@ -331,6 +346,11 @@ public class LoadTest {
       return true;
     }
 
+    public static Random mkRandom() {
+      Random random = new Random(seed);
+      seed = random.nextLong();
+      return random;
+    }
 
     @Override
     public void define(Setup setup, Topologies topologies) {
@@ -339,7 +359,12 @@ public class LoadTest {
         topologies,
         LoadTestStateMachine.LoadTestState.DISABLE_MB);
 
-      setup.declareObject("*loader", new Loader());
+      final MBR bounds = new MBR(new double[] { 0.0, 0.0 },
+                                 new double[] { 120.0, 120.0 });
+
+      seed = (new Random()).nextLong();
+
+      setup.declareObject("*loader", new RandomObjectGenerator(bounds));
       setup.clusterDepot("*depot2", SpatialModule.class.getName(), "*depot");
       setup.clusterQuery("*loadDataQuery", SpatialModule.class.getName(), "loadData");
 
@@ -377,9 +402,10 @@ public class LoadTest {
                 new Expr(Ops.EQUAL,
                          "*state",
                          LoadTestStateMachine.LoadTestState.LOAD_DATA))
-              .each(Ops.LOG_DEBUG, LOGGER, "LOAD DATA")
               .allPartition()
-              .each(LoadTest::loadData, "*loader").out("*result")
+              .each(Ops.LOG_DEBUG, LOGGER, "LOAD DATA")
+              .each(Module::mkRandom).out("*random")
+              .each(Loader::loadData, "*loader", "*random").out("*result")
               .macro(extractJavaFields("*result", "*addObjects", "*done"))
               .ifTrue(
                 "*done",
@@ -407,7 +433,7 @@ public class LoadTest {
               .each(Ops.LOG_DEBUG, LOGGER, "TIME_PROCESSING")
               .each(Module::setTopologyActive, spatialModuleName, "m", true)
               .invokeQuery("*loadDataQuery").out("*loadData")
-              .each(Ops.LOG_INFO, LOGGER,
+              .each(Ops.LOG_DEBUG, LOGGER,
                     new Expr(Ops.TO_STRING, "loadData: ", "*loadData"))
               .ifTrue(
                 new Expr(LoadData::isAllProcessed, "*loadData"),
@@ -467,7 +493,7 @@ public class LoadTest {
       };
 
       final RamaModule module = new Module();
-      cluster.launchModule(module, new LaunchConfig(1, 1));
+      cluster.launchModule(module, new LaunchConfig(2, 2));
       LOGGER.error("Launched perf test module");
       final PState smState =
         cluster.clusterPState(Module.class.getName(), "$$sm");
