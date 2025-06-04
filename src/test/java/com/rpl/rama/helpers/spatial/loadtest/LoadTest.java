@@ -247,7 +247,7 @@ public class LoadTest {
     public void define(Setup setup, Topologies topologies) {
       setup.declareDepot("*depot", Depot.random());
 
-      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 100);
+      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 150);
 
       MicrobatchTopology m = topologies.microbatch("m");
       m.pstate("$$object", PState.mapSchema(Long.class, Object.class));

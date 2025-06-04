@@ -77,18 +77,6 @@
 	  <version>2.16.0</version>
 	  <scope>test</scope>
 	</dependency>
-	<dependency>
-	  <groupId>org.geotools</groupId>
-	  <artifactId>gt-shapefile</artifactId>
-	  <version>${geotools.version}</version>
-	  <scope>test</scope>
-	</dependency>
-	<dependency>
-	  <groupId>org.geotools</groupId>
-	  <artifactId>gt-epsg-hsql</artifactId>
-	  <version>${geotools.version}</version>
-	  <scope>test</scope>
-	</dependency>
 	<!-- Core GeoTools dependency -->
 	<dependency>
           <groupId>org.geotools</groupId>
@@ -169,6 +157,7 @@
 		      <clojure.tools.logging.factory>clojure.tools.logging.impl/log4j2-factory</clojure.tools.logging.factory>
 		    </systemPropertyVariables>
 		    <!-- <argLine>-XX:+EnableDynamicAgentLoading</argLine> -->
+		    <argLine>-agentpath:/Applications/YourKit-Java-Profiler-2019.8.app/Contents/Resources/bin/mac/libyjpagent.dylib=port=10001"</argLine>
                 </configuration>
             </plugin>
             <plugin>

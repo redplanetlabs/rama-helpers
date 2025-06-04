@@ -101,7 +101,10 @@ public class StateMachine<State extends Enum<State>,
                   Block
                   .each(StateMachineState<State>::setState,
                         smStateVar, newStateVar).out(smStateVar)
-                  .localTransform("$$sm", Path.termVal(smStateVar))))));
+                  .localTransform("$$sm", Path.termVal(smStateVar))
+                  .each(Ops.LOG_INFO, LOGGER,
+                        new Expr(Ops.TO_STRING,
+                                 "Transition to: ", smStateVar))))));
 
     sm.source("*smCoordDepot").out("*mb")
         .explodeMicrobatch("*mb").out("*update")
@@ -133,7 +136,10 @@ public class StateMachine<State extends Enum<State>,
               .macro(extractJavaFields("*update", "*state"))
               .localTransform(
                 "$$sm",
-                Path.term(StateMachineState<State>::setCurrentState, "*state")),
+                Path.term(StateMachineState<State>::setCurrentState, "*state"))
+              .each(Ops.LOG_INFO, LOGGER,
+                        new Expr(Ops.TO_STRING,
+                                 "Transition to: ", "*state")),
 
               Case.create(true)
               .each(Ops.LOG_ERROR, LOGGER,
