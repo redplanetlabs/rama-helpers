@@ -1158,7 +1158,6 @@ public class RTree implements RamaSerializable {
                     //       new Expr(Ops.TO_STRING,
                     //                "new root created, taskId: ",
                     //                "*taskId"))
-                    .directPartition("*taskId")
                     // .each(Ops.LOG_TRACE, LOGGER,
                     //       new Expr(Ops.TO_STRING,
                     //                "Write new root: ", "*parent"))
