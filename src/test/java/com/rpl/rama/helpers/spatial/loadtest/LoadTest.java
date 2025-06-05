@@ -247,7 +247,7 @@ public class LoadTest {
     public void define(Setup setup, Topologies topologies) {
       setup.declareDepot("*depot", Depot.random());
 
-      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 10);
+      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 100);
 
       MicrobatchTopology m = topologies.microbatch("m");
       m.pstate("$$object", PState.mapSchema(Long.class, Object.class));
@@ -425,6 +425,17 @@ public class LoadTest {
                     .depotPartitionAppend("*depot2", "*addObject")
                     .continueLoop("*iter"))))
               .each(Ops.LOG_DEBUG, LOGGER, "LOAD DATA DONE"),
+
+              Case.create(
+                new Expr(Ops.EQUAL,
+                         "*state",
+                         LoadTestStateMachine.LoadTestState.ENABLE_MB))
+              .each(Ops.LOG_DEBUG, LOGGER, "TIME_PROCESSING")
+              .each(Module::setTopologyActive, spatialModuleName, "m", true)
+	      .each(Ops.IDENTITY,
+                      LoadTestStateMachine.LoadTestState.TIME_PROCESSING)
+	      .out("*nextState")
+	      .macro(statemachine.stateMachine.transitionTo("*nextState")),
 
               Case.create(
                 new Expr(Ops.EQUAL,

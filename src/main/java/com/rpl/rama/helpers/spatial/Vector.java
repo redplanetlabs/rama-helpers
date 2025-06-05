@@ -7,6 +7,8 @@ import clojure.lang.PersistentVector;
 import clojure.lang.RT;
 import clojure.lang.Var;
 
+import com.rpl.rama.ops.RamaFunction1;
+
 /** Helpers for working with clojure PersistentVector */
 class Vector {
 
@@ -21,12 +23,16 @@ class Vector {
   private static Var _into;
   private static Var _partition;
   private static Var _partitionAll;
+  private static Var _sortBy;
+  private static Var _hash;
 
   static {
     RT.init();
     _into = (Var) Clojure.var("clojure.core", "into");
     _partition = (Var) Clojure.var("clojure.core", "partition");
     _partitionAll = (Var) Clojure.var("clojure.core", "partition-all");
+    _sortBy = (Var) Clojure.var("clojure.core", "sort-by");
+    _hash = (Var) Clojure.var("clojure.core", "hash");
     assert _into != null;
   }
 
@@ -42,11 +48,20 @@ class Vector {
     return Vector.into(Vector.empty(), (List)_partitionAll.invoke(n, l1));
   }
 
+  public static <A, R> PersistentVector sortBy(
+    PersistentVector l1, RamaFunction1<A,R> f) {
+    return Vector.into(Vector.empty(), (List)_sortBy.invoke(l1, f));
+  }
+
   public static Object peek(PersistentVector v) {
     return RT.peek(v);
   }
 
   public static Object pop(PersistentVector v) {
     return RT.pop(v);
+  }
+
+  public static int hash(Object v) {
+    return (int)_hash.invoke(v);
   }
 }

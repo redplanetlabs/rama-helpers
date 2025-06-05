@@ -1,5 +1,6 @@
 package com.rpl.rama.helpers.spatial;
 
+import clojure.lang.PersistentTreeMap;
 import clojure.lang.PersistentVector;
 import clojure.lang.Counted;
 import clojure.lang.LazySeq;
@@ -12,6 +13,7 @@ import com.rpl.rama.CompoundAgg;
 import com.rpl.rama.Expr;
 import com.rpl.rama.Helpers;
 import com.rpl.rama.LoopVars;
+import com.rpl.rama.ModuleInstanceInfo;
 import com.rpl.rama.PState;
 import com.rpl.rama.Path;
 import com.rpl.rama.RamaSerializable;
@@ -21,6 +23,7 @@ import com.rpl.rama.helpers.RamaAssert;
 import com.rpl.rama.module.MicrobatchTopology;
 import com.rpl.rama.ops.Ops;
 import com.rpl.rama.ops.OutputCollector;
+import com.rpl.rama.ops.RamaFunction1;
 import com.rpl.rama.impl.NativeRamaFunction0;
 import com.rpl.rama.impl.Util;
 
@@ -34,6 +37,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 public class RTree implements RamaSerializable {
@@ -855,11 +859,17 @@ public class RTree implements RamaSerializable {
     }
   }
 
+  private static PersistentTreeMap emptySortedMap() {
+    return new PersistentTreeMap();
+  }
+
   private <T> Block buildModTable(
     final String microbatchVar,
     final RTreeConvertorFunction<T> dataConvertor,
     final String modTableVar) {
     return Block
+        .each(RTree::emptySortedMap).out("*emptyMap")
+        .localTransform(modTableVar, Path.termVal("*emptyMap"))
         .each(Ops.LOG_DEBUG, LOGGER, "buildModTable")
         .macro(rootNode("*rootNode"))
         .macro(explode(microbatchVar, "*data"))
@@ -881,10 +891,17 @@ public class RTree implements RamaSerializable {
                                       "*chosenNode"))
         // NOTE assumes chooseLeaf emits on *node's partition
         .directPartition("*taskId")
-        .compoundAgg(
-          CompoundAgg.map(
-            new Expr(Node::nodeId, "*chosenNode"),
-            Agg.list("*modification"))).out(modTableVar);
+        .each(ModTableKey::mkLeafKey,
+              new Expr(Node::nodeId, "*chosenNode")).out("*tmpKey")
+        .localSelect(modTableVar,
+                     Path.key("*tmpKey").nullToVal(Vector.empty())
+                     ).out("*current")
+        .each(Vector::conj, "*current", "*modification").out("*newValue")
+        .localTransform(modTableVar, Path.key("*tmpKey").termVal("*newValue"))
+        // .compoundAgg(
+        //   CompoundAgg.map("*tmpKey",
+        //                   Agg.list("*modification"))).out(modTableVar)
+        ;
   }
 
   private Block hasNoMoreModsPred(final String modTableVar,
@@ -942,6 +959,102 @@ public class RTree implements RamaSerializable {
                 .macro(writeNode("*nodeId", nodeVar)));
   }
 
+  public static class ModTableKey
+      implements Comparable<ModTableKey>, Cloneable {
+    public Long level;
+    public Long opNodeId;
+
+    public ModTableKey(Long opNodeId) {
+      this.level = 0L;
+      this.opNodeId = opNodeId;
+    }
+
+    public ModTableKey(Long level, Long opNodeId) {
+      this.level = level;
+      this.opNodeId = opNodeId;
+    }
+
+    public static ModTableKey mkLeafKey(Long opNodeId) {
+      return new ModTableKey(opNodeId);
+    }
+
+    public static ModTableKey mkKey(Long level, Long opNodeId) {
+      return new ModTableKey(level, opNodeId);
+    }
+
+
+    @Override
+    public int hashCode() {
+      final int prime = 31;
+      int result = 1;
+      result = prime * result + ((level == null) ? 0 : level.hashCode());
+      result = prime * result + ((opNodeId == null) ? 0 : opNodeId.hashCode());
+      return result;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj)
+        return true;
+      if (obj == null)
+        return false;
+      if (getClass() != obj.getClass())
+        return false;
+      ModTableKey other = (ModTableKey) obj;
+      if (level == null) {
+        if (other.level != null)
+          return false;
+      } else if (!level.equals(other.level))
+        return false;
+      if (opNodeId == null) {
+        if (other.opNodeId != null)
+          return false;
+      } else if (!opNodeId.equals(other.opNodeId))
+        return false;
+      return true;
+    }
+
+    @Override
+    public int compareTo(ModTableKey other) {
+      if (other == null) {
+        return 1;
+      }
+
+      // First compare by level
+      int levelComparison = Long.compare(this.level, other.level);
+      if (levelComparison != 0) {
+        return levelComparison;
+      }
+
+      // If levels are equal, compare by opNodeId
+      return Long.compare(this.opNodeId, other.opNodeId);
+    }
+
+    @Override
+    public ModTableKey clone() {
+      // Shallow clone: Since Long objects are immutable, a shallow clone using
+      // super.clone() is sufficient
+      try {
+        return (ModTableKey) super.clone();
+      } catch (CloneNotSupportedException e) {
+        // This should never happen since we implement Cloneable
+        throw new AssertionError("Clone not supported", e);
+      }
+    }
+
+    @Override
+    public String toString() {
+      return "ModTableKey [level=" + level + ", opNodeId=" + opNodeId + "]";
+    }
+  }
+
+  static Map.Entry<ModTableKey, PersistentVector> nextOps(
+      Map<ModTableKey, PersistentVector> allOps) {
+    TreeMap<ModTableKey, PersistentVector> m =
+        new TreeMap<ModTableKey, PersistentVector>(allOps);
+    return m.firstEntry();
+  }
+
   public <T> Block handleModifications(
     final String microbatchVar,
     final RTreeConvertorFunction<T> dataConvertor) {
@@ -950,17 +1063,20 @@ public class RTree implements RamaSerializable {
         // .each(Ops.LOG_TRACE, LOGGER, "handleModifications")
         .each(Ops.CURRENT_TASK_ID).out("*taskId")
         .each(CURRENT_EVENT_NUM).out("*startEvent")
+        .batchBlock(Block.keepTrue(false).materialize().out("$$modTable"))
         .batchBlock(Block.macro(buildModTable(microbatchVar,
                                               dataConvertor,
                                               "$$modTable")))
         .each(CURRENT_EVENT_NUM).out("*afterBuildEvent")
         .localSelect("$$modTable",
-                     Path.stay().view(Counted::count)).out("*numChanges")
-        .localSelect("$$modTable",
                      Path.stay()
-                     .view(Map<Long, Object>::keySet)).out("*wholeTable")
-        .each(Ops.LOG_ERROR, LOGGER,
-                      new Expr(Ops.TO_STRING, "INITIAL TABLE: ", "*wholeTable"))
+                     .view(Counted::count)
+                     ).out("*numChanges")
+        // .localSelect("$$modTable",
+        //              Path.stay()
+        //              .view(PersistentTreeMap::keys)).out("*wholeTable")
+        // .each(Ops.LOG_ERROR, LOGGER,
+        //               new Expr(Ops.TO_STRING, "INITIAL TABLE: ", "*wholeTable"))
         .ifTrue(
           new Expr(Ops.IS_POSITIVE, "*numChanges"),
           // Perform the insertion, looping to insert changes into parent nodes
@@ -980,15 +1096,21 @@ public class RTree implements RamaSerializable {
               Block
               .batchBlock(
                 Block
+                // .localSelect("$$modTable", Path.stay()).out("*allOps")
+                // .each(RTree::nextOps, "*allOps").out("*nodeOps")
                 .localSelect("$$modTable", Path.first()).out("*nodeOps")
+
                 // .each(Ops.LOG_TRACE,
                 //       LOGGER,
                 //       new Expr(Ops.TO_STRING, "nodeOps: ", "*nodeOps"))
-                .each(Ops.FIRST, "*nodeOps").out("*opNodeId")
+                .each(Ops.FIRST, "*nodeOps").out("*modKey")
+                .macro(extractJavaFields("*modKey", "*opNodeId", "*level"))
                 .each(Ops.LAST, "*nodeOps").out("*nodeOpsList")
                 .macro(lookupNode("*taskId", "*opNodeId", "*currentNode"))
-                .each(Ops.LOG_ERROR, LOGGER,
-                      new Expr(Ops.TO_STRING, "TABLE ID: ", "*opNodeId"))
+                // .each(Ops.LOG_ERROR, LOGGER,
+                //       new Expr(Ops.TO_STRING,
+                //                "TABLE ID: ", "*opNodeId",
+                //                ", level: ", "*level"))
                 // .each(Ops.LOG_TRACE,
                 //       LOGGER,
                 //       new Expr(Ops.TO_STRING, "nodeOpsList: ", "nodeOpsList"))
@@ -1003,6 +1125,7 @@ public class RTree implements RamaSerializable {
                 //                "UpdateNodes new siblings: ", "*newSiblings"))
                 .each(List<Object>::size,"*newSiblings").out("*numSiblings")
                 .each(Node::isRoot, "*currentNode").out("*isRoot")
+                .each(Ops.INC_LONG, "*level").out("*nextLevel")
                 .ifTrue(
                   new Expr(Ops.EQUAL, 0, "*numSiblings"),
                   // No splits creating new siblings
@@ -1062,6 +1185,7 @@ public class RTree implements RamaSerializable {
                 .macro(updateModTable("$$modTable",
                                       "*opNodeId",
                                       "*parentId",
+                                      "*nextLevel",
                                       "*newOps"))
                 // .each(Ops.LOG_TRACE,
                 //       LOGGER,
@@ -1092,12 +1216,32 @@ public class RTree implements RamaSerializable {
                           ", Total events: ", "*totalEvents")));
   }
 
+  private static int partition(Object obj, int numTasks) {
+    return Math.floorMod(Vector.hash(obj), numTasks);
+  }
+
+  private static ArrayList<Node> sortByPartition(
+    ArrayList<Node> siblings, int numTasks) {
+
+    siblings.sort(Comparator.comparing(
+      (Node n) -> {
+        return partition((Long)n.nodeId(), numTasks);
+      }));
+    return siblings;
+  }
+
   private Block saveAndOps(final String newSiblingsVar,
                            final String newOpsVar) {
     return Block
+        .each(Ops.MODULE_INSTANCE_INFO).out("*mii")
+        .each(ModuleInstanceInfo::getNumTasks, "*mii").out("*numTasks")
+        .each(RTree::sortByPartition,
+              newSiblingsVar, "*numTasks"
+              ).out("*sortedSiblings")
+        // .each(Ops.LOG_DEBUG, LOGGER, "saveAndOps")
         .loopWithVars(
                 LoopVars
-                .var("*siblings", newSiblingsVar)
+                .var("*siblings", "*sortedSiblings")
                 .var("*ops",
                      new Expr(RTree::<RTreeCollector.AddObject>emptyList)),
                 Block
@@ -1128,31 +1272,37 @@ public class RTree implements RamaSerializable {
                         "*newOp").out("*newOps1")
                   .each(RTree::restList, "*siblings").out("*remaining")
                   .continueLoop("*remaining", "*newOps1")))
-              .out(newOpsVar)
+        .out(newOpsVar)
+        // .each(Ops.LOG_DEBUG, LOGGER, "saveAndOps done")
         ;}
-
 
   private Block updateModTable(
     final String modTableVar,
     final String opNodeIdVar,
     final String parentIdVar,
+    final String levelVar,
     final String newOpsVar) {
+    final String modKeyVar = Helpers.genVar("modKey");
+    final String prevKeyVar = Helpers.genVar("prevKey");
     return Block
+        .each(ModTableKey::mkKey,
+              new Expr(Ops.DEC_LONG, levelVar), opNodeIdVar).out(prevKeyVar)
+        .each(ModTableKey::mkKey, levelVar, parentIdVar).out(modKeyVar)
         .ifTrue(
           new Expr(RTree::isEmptyList, newOpsVar),
           Block.localTransform(
             modTableVar,
             // remove what we just processed
-            Path.key(opNodeIdVar).termVoid()),
+            Path.key(prevKeyVar).termVoid()),
           Block.localTransform(
             modTableVar,
             Path
             .multiPath(
               // remove what we just processed
-              Path.key(opNodeIdVar).termVoid(),
+              Path.key(prevKeyVar).termVoid(),
               // add new sibling nodes
               Path
-              .key(parentIdVar)
+              .key(modKeyVar)
               .nullToVal(new Expr(Vector::empty))
               .term(Vector::into, newOpsVar))));
   }

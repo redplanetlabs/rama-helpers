@@ -60,7 +60,7 @@ public class StateMachine<State extends Enum<State>,
   }
 
   public void define(Setup setup, Topologies topologies, State initState) {
-    setup.declareTickDepot("*smDepot", 100);  // ms
+    setup.declareTickDepot("*smDepot", 200);  // ms
     setup.declareDepot("*smCoordDepot", Depot.disallow());
 
     MicrobatchTopology sm = topologies.microbatch("sm");

@@ -8,7 +8,7 @@ import com.rpl.rama.helpers.statemachine.core.StateMachineConfig;
 
 public class LoadTestStateMachine implements RamaSerializable {
   public enum LoadTestState {
-    DISABLE_MB, LOAD_DATA, TIME_PROCESSING, QUERY_PERFORMANCE, DONE
+    DISABLE_MB, LOAD_DATA, ENABLE_MB, TIME_PROCESSING, QUERY_PERFORMANCE, DONE
   }
 
   public enum LoadTestSignal implements RamaSerializable {
@@ -26,6 +26,9 @@ public class LoadTestStateMachine implements RamaSerializable {
         // .onAllSignalled(LoadTestSignal.LOAD_COMPLETE,
         //                 Duration.ofSeconds(3),
         //                 LoadTestState.TIME_PROCESSING )
+        .done()
+
+        .state(LoadTestState.ENABLE_MB)
         .done()
 
         .state(LoadTestState.TIME_PROCESSING)
