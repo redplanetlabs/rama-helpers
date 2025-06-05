@@ -247,7 +247,7 @@ public class LoadTest {
     public void define(Setup setup, Topologies topologies) {
       setup.declareDepot("*depot", Depot.random());
 
-      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 150);
+      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 10);
 
       MicrobatchTopology m = topologies.microbatch("m");
       m.pstate("$$object", PState.mapSchema(Long.class, Object.class));
@@ -273,15 +273,15 @@ public class LoadTest {
       m.source("*depot").out("*microbatch")
           .batchBlock(
             Block
-            .each(Ops.LOG_TRACE, LOGGER, "New Microbatch")
+            // .each(Ops.LOG_TRACE, LOGGER, "New Microbatch")
             .explodeMicrobatch("*microbatch").out("*v")
             .macro(idGenerator.genId("*objectId"))
             .macro(extractJavaFields("*v", "*bounds", "*object"))
-            .each(Ops.LOG_TRACE,
-                  LOGGER,
-                  new Expr(Ops.TO_STRING,
-                           "objectId=", "*objectId",
-                           ", MB Process: ", "*v"))
+            // .each(Ops.LOG_TRACE,
+            //       LOGGER,
+            //       new Expr(Ops.TO_STRING,
+            //                "objectId=", "*objectId",
+            //                ", MB Process: ", "*v"))
             .hashPartition("$$object", "*objectId")
             .localTransform("$$object",
                             Path.key("*objectId").termVal("*object"))
@@ -289,9 +289,9 @@ public class LoadTest {
             .hashPartition("$$objectLookup", "*object")
             .localTransform("$$objectLookup",
                             Path.key("*object").termVal("*objectId"))
-            .each(Ops.LOG_TRACE, LOGGER,
-                  new Expr(Ops.TO_STRING,
-                           "Added object", "*objectId", "*object", "*bounds"))
+            // .each(Ops.LOG_TRACE, LOGGER,
+            //       new Expr(Ops.TO_STRING,
+            //                "Added object", "*objectId", "*object", "*bounds"))
             .globalPartition()
             .agg(Agg.list(new Expr(Ops.TUPLE,
                                    "*bounds",
@@ -317,7 +317,7 @@ public class LoadTest {
                 })));
 
       topologies.query("loadData").out("*finalLoadData")
-          .each(Ops.LOG_TRACE, LOGGER,"allProcessed")
+          // .each(Ops.LOG_TRACE, LOGGER,"allProcessed")
           .globalPartition()
           .localSelect("$$loadData", Path.stay()).out("*loadData")
           .originPartition()
