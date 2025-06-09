@@ -104,7 +104,7 @@ public class StateMachine<State extends Enum<State>,
                   .localTransform("$$sm", Path.termVal(smStateVar))
                   .each(Ops.LOG_INFO, LOGGER,
                         new Expr(Ops.TO_STRING,
-                                 "Transition to: ", smStateVar))))));
+                                 "Transition to: ", newStateVar))))));
 
     sm.source("*smCoordDepot").out("*mb")
         .explodeMicrobatch("*mb").out("*update")

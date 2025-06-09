@@ -187,9 +187,19 @@ public class LoadTest {
     public LoadData() {
       allProcessed = false;
       neverProcessed = true;
-      processingStart = 0L;
+      processingStart = Instant.now().toEpochMilli();
       processingEnd = 0L;
       numProcessed = 0L;
+    }
+
+    public LoadData reset() {
+      LOGGER.debug("reset");
+      neverProcessed = true;
+      allProcessed = false;
+      processingStart =  0L;
+      processingEnd = 0L;
+      numProcessed = 0L;
+      return this;
     }
 
     LoadData someProcessed(int n) {
@@ -246,13 +256,15 @@ public class LoadTest {
     @Override
     public void define(Setup setup, Topologies topologies) {
       setup.declareDepot("*depot", Depot.random());
+      setup.declareDepot("*statsDepot", Depot.random());
 
       setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 100);
 
       MicrobatchTopology m = topologies.microbatch("m");
       m.pstate("$$object", PState.mapSchema(Long.class, Object.class));
       m.pstate("$$loadData", LoadData.class)
-          .global().initialValue(new LoadData());
+          .global()
+          .initialValue(new LoadData());
 
       // This is just a test convenience
       m.pstate("$$objectLookup", PState.mapSchema(Object.class, Long.class));
@@ -306,7 +318,9 @@ public class LoadTest {
               Block.localTransform(
                 "$$loadData",
                 Path.term(LoadData::someProcessed, "*numObjects")),
-              Block.localTransform("$$loadData", Path.term(LoadData::noneProcessed)))
+              Block.localTransform(
+                "$$loadData",
+                Path.term(LoadData::noneProcessed)))
             .macro(
               rTree.handleModifications(
                 "$$objects",
@@ -316,12 +330,23 @@ public class LoadTest {
                     (Long) data.get(1));
                 })));
 
+      m.source("*statsDepot").out("*microbatch")
+          .globalPartition()
+          .localTransform("$$loadData", Path.term(LoadData::reset));
+
       topologies.query("loadData").out("*finalLoadData")
           // .each(Ops.LOG_TRACE, LOGGER,"allProcessed")
           .globalPartition()
           .localSelect("$$loadData", Path.stay()).out("*loadData")
           .originPartition()
           .agg(Agg.last("*loadData")).out("*finalLoadData");
+
+      topologies.query("resetData").out("*out")
+          .globalPartition()
+          .depotPartitionAppend("*statsDepot", "reset")
+          .each(Ops.IDENTITY, "reset").out("*reset")
+          .originPartition()
+          .agg(Agg.last("*reset")).out("*out");
     }
   }
 
@@ -367,10 +392,11 @@ public class LoadTest {
       setup.declareObject("*loader", new RandomObjectGenerator(bounds));
       setup.clusterDepot("*depot2", SpatialModule.class.getName(), "*depot");
       setup.clusterQuery("*loadDataQuery", SpatialModule.class.getName(), "loadData");
+      setup.clusterQuery("*resetDataQuery", SpatialModule.class.getName(), "resetData");
 
       MicrobatchTopology m = topologies.microbatch("m");
 
-      m.pstate("$$inProgressAppends", PState.mapSchema(Long.class, Long.class));
+      // m.pstate("$$inProgressAppends", PState.mapSchema(Long.class, Long.class));
 
       final String smStateVar = "*smState";
 
@@ -432,17 +458,20 @@ public class LoadTest {
                          LoadTestStateMachine.LoadTestState.ENABLE_MB))
               .each(Ops.LOG_DEBUG, LOGGER, "TIME_PROCESSING")
               .each(Module::setTopologyActive, spatialModuleName, "m", true)
-	      .each(Ops.IDENTITY,
-                      LoadTestStateMachine.LoadTestState.TIME_PROCESSING)
-	      .out("*nextState")
-	      .macro(statemachine.stateMachine.transitionTo("*nextState")),
+              .invokeQuery("*resetDataQuery").out("*xxx")
+              // .globalPartition()
+              // .localTransform("$$loadData", Path.term(LoadData::reset))
+              // .each(Ops.IDENTITY,
+              //         LoadTestStateMachine.LoadTestState.TIME_PROCESSING)
+              // .out("*nextState")
+              // .macro(statemachine.stateMachine.transitionTo("*nextState"))
+              ,
 
               Case.create(
                 new Expr(Ops.EQUAL,
                          "*state",
                          LoadTestStateMachine.LoadTestState.TIME_PROCESSING))
               .each(Ops.LOG_DEBUG, LOGGER, "TIME_PROCESSING")
-              .each(Module::setTopologyActive, spatialModuleName, "m", true)
               .invokeQuery("*loadDataQuery").out("*loadData")
               .each(Ops.LOG_DEBUG, LOGGER,
                     new Expr(Ops.TO_STRING, "loadData: ", "*loadData"))
@@ -524,5 +553,4 @@ public class LoadTest {
     }
     LOGGER.error("loadTestTest done");
   }
-
 }

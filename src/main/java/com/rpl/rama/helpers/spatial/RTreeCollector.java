@@ -1,10 +1,11 @@
 package com.rpl.rama.helpers.spatial;
 
+import com.rpl.rama.RamaSerializable;
 import com.rpl.rama.ops.OutputCollector;
 
 public class RTreeCollector {
 
-  public static class AddObject {
+  public static class AddObject implements RamaSerializable {
     public final MBR bounds;
     public final Long objectId;
 
