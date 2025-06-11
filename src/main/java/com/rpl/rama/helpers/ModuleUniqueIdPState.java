@@ -7,6 +7,7 @@ import com.rpl.rama.ops.Ops;
 /**
  * Higher-level PState helper for generating 8 byte IDs unique across the module. ID consists of 22 bits
  * for the generating task ID and 42 bits for a monotonically increasing or decreasing number on the task.
+ * A generated ID does not necessarily hash to the task it is generated on.
  *
  * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/pstates.html">PStates documentation</a>
  * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
