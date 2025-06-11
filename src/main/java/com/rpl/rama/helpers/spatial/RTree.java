@@ -17,6 +17,7 @@ import com.rpl.rama.ModuleInstanceInfo;
 import com.rpl.rama.PState;
 import com.rpl.rama.Path;
 import com.rpl.rama.RamaSerializable;
+import com.rpl.rama.SubBatch;
 import com.rpl.rama.RamaModule.Topologies;
 import com.rpl.rama.helpers.ModuleUniqueIdPState;
 import com.rpl.rama.helpers.RamaAssert;
@@ -188,16 +189,19 @@ public class RTree implements RamaSerializable {
   }
 
   /** Write the root node value to all partitions */
-  private Block broadcastRootNodeValue(final String rootNodeVar) {
-    return Block
-        .each(Ops.LOG_DEBUG, LOGGER, "broadcastRootNodeValue")
-        .macro(RamaAssert.assertMacro(
-          new Expr(Ops.EQUAL, 0, new Expr(Ops.CURRENT_TASK_ID)),
-          "AA"))
-        .batchBlock(
-          Block
-          .allPartition()
-          .macro(writeRoot(rootNodeVar)));
+  private SubBatch broadcastRootNodeValue(final String rootNodeVar) {
+    return new SubBatch(
+      Block
+      .each(Ops.LOG_DEBUG, LOGGER, "broadcastRootNodeValue")
+      .macro(RamaAssert.assertMacro(
+        new Expr(Ops.EQUAL, 0, new Expr(Ops.CURRENT_TASK_ID)),
+        "AA"))
+      .allPartition()
+      .macro(writeRoot(rootNodeVar))
+      .each(Ops.IDENTITY, rootNodeVar).out("*d")
+      .globalPartition()
+      .agg(Agg.last("*d")).out("*dummy"),
+      "*dummy");
   }
 
   /** Broadcast root node to all tasks */
@@ -209,7 +213,8 @@ public class RTree implements RamaSerializable {
         //       new Expr(Ops.TO_STRING,
         //                "Updating global partitions: ",
         //                "*rootNode"))
-        .macro(broadcastRootNodeValue("*rootNode"));
+        .each(Ops.LOG_DEBUG, LOGGER, "BBB")
+        .subBatch(broadcastRootNodeValue("*rootNode")).out("*dummy");
   }
 
   private LeafNode constructRoot(long id) {
@@ -220,18 +225,40 @@ public class RTree implements RamaSerializable {
       If the root node does not exist it is created.
    */
   private Block rootNode(final String rootNodeVar) {
+    // final String currentRootNodeVar = Helpers.genVar("rootNode");
+    // final String rootNodeIdVar = Helpers.genVar("rootNodeId");
+    // final String taskIdVar = Helpers.genVar("taskId");
+    return Block
+        .localSelect(rootPstate, Path.stay()).out(rootNodeVar)
+        .macro(RamaAssert.assertMacro(Ops.IS_NOT_NULL, rootNodeVar));
+  }
+
+  private Block ensureRootNode() {
     final String currentRootNodeVar = Helpers.genVar("rootNode");
+    final String rootNodeVar = Helpers.genVar("rootNode");
     final String rootNodeIdVar = Helpers.genVar("rootNodeId");
+    final String taskIdVar = Helpers.genVar("taskId");
     return Block
         .localSelect(rootPstate, Path.stay()).out(currentRootNodeVar)
         .ifTrue(new Expr(Ops.IS_NULL, currentRootNodeVar),
                 Block
                 .each(Ops.LOG_DEBUG, LOGGER, "Creating root node")
                 .macro(idGenerator.genId(rootNodeIdVar))
-                .each(RTree::constructRoot, this, rootNodeIdVar).out(rootNodeVar)
-                .macro(broadcastRootNodeValue(rootNodeVar)),
+                .each(RTree::constructRoot,
+                      this,
+                      rootNodeIdVar).out(rootNodeVar),
                 Block
-                .each(Ops.IDENTITY, currentRootNodeVar).out(rootNodeVar));
+                .each(Ops.IDENTITY, currentRootNodeVar).out(rootNodeVar))
+        .each(Ops.LOG_DEBUG, LOGGER, "CCC")
+        .each(Ops.LOG_DEBUG, LOGGER, "broadcastRootNodeValue")
+        .macro(RamaAssert.assertMacro(
+          new Expr(Ops.EQUAL, 0, new Expr(Ops.CURRENT_TASK_ID)),
+          "AA"))
+        .allPartition()
+        .macro(writeRoot(rootNodeVar))
+        .each(Ops.IDENTITY, rootNodeVar).out("*d")
+        .globalPartition()
+        .agg(Agg.last("*d")).out("*dummy");
   }
 
   protected Block readNode(final String nodeIdVar, final String nodeVar) {
@@ -413,7 +440,8 @@ public class RTree implements RamaSerializable {
         // var, which causes it to use the object cache.
         .each(RTree::allChildren, nodeVar, nodeOpsVar).out("*allChildren")
         // .each(RTree::naiveGroupChildren, this, "*allChildren").out("*groupedChildren")
-        .each(RTree::strGroupChildren, this, "*allChildren").out("*groupedChildren")
+        .each(RTree::strGroupChildren, this,
+              "*allChildren").out("*groupedChildren")
         // Create as many siblings as needed.
         .each(RTreeHelpers::newArrayList).out("*emptySiblings")
         .each(Ops.IDENTITY,
@@ -437,6 +465,8 @@ public class RTree implements RamaSerializable {
             //                "numNewSiblings: ", "*numNewSiblings",
             //                " size: ", new Expr(Ops.SIZE, "*siblings")))
             .macro(idGenerator.genId("*newNodeId"))
+            .each(Ops.LOG_DEBUG, LOGGER,
+                  "New node id (sibling): {}", "*newNodeId")
             .each(Node::newSibling,
                   "*currentNode",
                   "*newNodeId").out("*newNode")
@@ -1094,6 +1124,11 @@ public class RTree implements RamaSerializable {
     return Block
         .each(Ops.LOG_DEBUG, LOGGER, "handleModifications")
         .each(Ops.CURRENT_TASK_ID).out("*taskId")// TODO remove this
+        .batchBlock(Block
+                    // .each(Ops.CURRENT_TASK_ID).out("*taskId")
+                    .macro(ensureRootNode())
+                    // .directPartition("*taskId")
+                    )
 
         .each(CURRENT_EVENT_NUM).out("*startEvent")
         // materialize the temporary pstate, so we can explicitly control its
@@ -1185,6 +1220,7 @@ public class RTree implements RamaSerializable {
                 .each(List<Object>::size,"*newSiblings").out("*numSiblings")
                 .each(Node::isRoot, "*currentNode").out("*isRoot")
                 .each(Ops.INC_LONG, "*level").out("*nextLevel")
+                .each(Ops.CURRENT_TASK_ID).out("*tmpTaskId")
                 .ifTrue(
                   new Expr(Ops.EQUAL, 0, "*numSiblings"),
                   // No splits creating new siblings
@@ -1204,9 +1240,14 @@ public class RTree implements RamaSerializable {
                     // .each(Ops.LOG_TRACE, LOGGER, "node was root")
                     .each(Node::nodeId, "*currentNode").out("*nodeId")
                     .each(Node::bounds, "*currentNode").out("*nodeBounds")
+
+                    // ------ Start of root update
+                    // NOTE all root node adjustments MUST be made on task0
+                    .directPartition(0)
                     .macro(idGenerator.genId("*parentId"))
-                    .each(RTree::createRootNode,
-                          "*parentId").out("*parent")
+                    .each(Ops.LOG_DEBUG, LOGGER,
+                          "New node id (root): {}", "*parentId")
+                    .each(RTree::createRootNode, "*parentId").out("*parent")
                     .each(Node::add,
                           "*parent",
                           "*nodeBounds",
@@ -1224,6 +1265,11 @@ public class RTree implements RamaSerializable {
                     //.directPartition("*taskId")
 
                     .macro(writeRoot("*parent"))
+                    .each(Ops.LOG_DEBUG, LOGGER, "AAA")
+                    .subBatch(broadcastRootNodeValue("*parent")).out("*dummy")
+                    .directPartition("*tmpTaskId")
+                    // ------ End of root update
+
                     .each(Node::setParentId,
                           "*currentNode", "*parentId")
                     .macro(writeNode("*nodeId","*currentNode")),

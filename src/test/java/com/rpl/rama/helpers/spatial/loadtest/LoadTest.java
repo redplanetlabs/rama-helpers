@@ -385,11 +385,12 @@ public class LoadTest {
 
   public static class Module implements RamaModule {
 
-    static long seed = 0;
+    static long seed = 0; // (new Random()).nextLong();
 
     LoadTestStateMachine statemachine = new LoadTestStateMachine();
 
-    static volatile RamaFunction3<String,String,Boolean, Boolean> pauseFn = null;
+    static volatile RamaFunction3<String,String,Boolean, Boolean> pauseFn =
+        null;
 
     static Boolean setTopologyActive(String moduleName,
                                      String topologyName,
@@ -403,6 +404,7 @@ public class LoadTest {
     }
 
     public static Random mkRandom() {
+      LOGGER.debug("Make random with seed: " + seed);
       Random random = new Random(seed);
       seed = random.nextLong();
       return random;
