@@ -189,9 +189,8 @@ public class RTree implements RamaSerializable {
   }
 
   /** Write the root node value to all partitions */
-  private SubBatch broadcastRootNodeValue(final String rootNodeVar) {
-    return new SubBatch(
-      Block
+  private Block broadcastRootNodeValue(final String rootNodeVar) {
+    return Block
       .each(Ops.LOG_DEBUG, LOGGER, "broadcastRootNodeValue")
       .macro(RamaAssert.assertMacro(
         new Expr(Ops.EQUAL, 0, new Expr(Ops.CURRENT_TASK_ID)),
@@ -200,8 +199,7 @@ public class RTree implements RamaSerializable {
       .macro(writeRoot(rootNodeVar))
       .each(Ops.IDENTITY, rootNodeVar).out("*d")
       .globalPartition()
-      .agg(Agg.last("*d")).out("*dummy"),
-      "*dummy");
+      .agg(Agg.last("*d")).out("*dummy");
   }
 
   /** Broadcast root node to all tasks */
@@ -214,7 +212,7 @@ public class RTree implements RamaSerializable {
         //                "Updating global partitions: ",
         //                "*rootNode"))
         .each(Ops.LOG_DEBUG, LOGGER, "BBB")
-        .subBatch(broadcastRootNodeValue("*rootNode")).out("*dummy");
+        .macro(broadcastRootNodeValue("*rootNode"));
   }
 
   private LeafNode constructRoot(long id) {
@@ -990,7 +988,7 @@ public class RTree implements RamaSerializable {
         .macro(readNode(nodeIdVar, tmpNodeVar))
         .ifTrue(
           new Expr(Ops.IS_NULL, tmpNodeVar),
-          Block.directPartition(rootTaskIdVar).macro(rootNode(nodeVar)),
+          Block.hashPartition("root").macro(rootNode(nodeVar)),
           Block.each(Ops.IDENTITY, tmpNodeVar).out(nodeVar))
         // .each(Ops.LOG_TRACE, LOGGER,
         //       new Expr(Ops.TO_STRING,
@@ -1241,9 +1239,9 @@ public class RTree implements RamaSerializable {
                     .each(Node::nodeId, "*currentNode").out("*nodeId")
                     .each(Node::bounds, "*currentNode").out("*nodeBounds")
 
-                    // ------ Start of root update
-                    // NOTE all root node adjustments MUST be made on task0
-                    .directPartition(0)
+                    // ------ Start of root update NOTE all root node
+                    // adjustments MUST be made on "root" partition
+                    .hashPartition("root")
                     .macro(idGenerator.genId("*parentId"))
                     .each(Ops.LOG_DEBUG, LOGGER,
                           "New node id (root): {}", "*parentId")
@@ -1252,6 +1250,7 @@ public class RTree implements RamaSerializable {
                           "*parent",
                           "*nodeBounds",
                           "*nodeId").out("*fred")
+
                     // .each(Ops.LOG_TRACE, LOGGER,
                     //       "new root created")
                     // .each(Ops.LOG_TRACE, LOGGER,
@@ -1266,7 +1265,7 @@ public class RTree implements RamaSerializable {
 
                     .macro(writeRoot("*parent"))
                     .each(Ops.LOG_DEBUG, LOGGER, "AAA")
-                    .subBatch(broadcastRootNodeValue("*parent")).out("*dummy")
+                    // .subBatch(broadcastRootNodeValue("*parent")).out("*dummy")
                     .directPartition("*tmpTaskId")
                     // ------ End of root update
 
