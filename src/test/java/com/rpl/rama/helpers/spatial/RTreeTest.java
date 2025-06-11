@@ -340,9 +340,17 @@ public class RTreeTest {
 
         LOGGER.error("Verify " + verify.invoke());
 
-        assertEquals(new ArrayList<>(Arrays.asList(4L, 3L, 0L, 2L, 1L)),
+        assertEquals(new ArrayList<>(Arrays.asList(398046511106L,
+                                                   0L,
+                                                   4398046511104L,
+                                                   1L,
+                                                   4398046511105L)),
                      new ArrayList<>((List<Long>)q.invoke(oneBounds)));
-        assertEquals(new ArrayList<>(Arrays.asList(4L, 3L, 0L, 2L, 1L)),
+        assertEquals(new ArrayList<>(Arrays.asList(398046511106L,
+                                                   4398046511104L,
+                                                   4398046511105L,
+                                                   0L,
+                                                   1L)),
                      new ArrayList<>((List<Long>)q.invoke(twoBounds)));
         assertEquals(new ArrayList<>(Arrays.asList()),
                      new ArrayList<>((List<Long>)q.invoke(twoHundredBounds)));

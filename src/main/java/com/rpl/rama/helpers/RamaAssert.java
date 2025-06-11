@@ -52,15 +52,49 @@ public class RamaAssert {
     }
   }
 
+public static <T> Block assertMacro(Expr expr) {
+    final String assertResultVar = Helpers.genVar("assertResult");
+    if (isAssertEnabled()) {
+      return
+          Block
+          .each(Ops.IDENTITY, expr).out(assertResultVar)
+          .ifTrue(
+            new Expr(Ops.NOT, new Expr(Ops.IDENTITY, assertResultVar)),
+            Block.each(RamaAssert::failedAssert1, assertResultVar));
+    } else {
+      // TODO is there a better NoOp?
+      // return Block.each(Ops.IDENTITY, 1).out("*noop");
+      // TODO try null as well
+      return Block.create();
+    }
+  }
+
+  public static <T> Block assertMacro(Expr expr, String msg) {
+    final String assertResultVar = Helpers.genVar("assertResult");
+    if (isAssertEnabled()) {
+      return
+          Block
+          .each(Ops.IDENTITY, expr).out(assertResultVar)
+          .ifTrue(
+            new Expr(Ops.NOT, new Expr(Ops.IDENTITY, assertResultVar)),
+            Block.each(RamaAssert::failedAssert1, msg));
+    } else {
+      // TODO is there a better NoOp?
+      // return Block.each(Ops.IDENTITY, 1).out("*noop");
+      // TODO try null as well
+      return Block.create();
+    }
+  }
+
   public static <T> Block assertMacro(NativeAnyArityRamaFunction fn, Object arg) {
     final String assertResultVar = Helpers.genVar("assertResult");
     if (isAssertEnabled()) {
       return
-	Block
-	.each(fn, arg).out(assertResultVar)
-	.ifTrue(
-		new Expr(Ops.NOT, new Expr(Ops.IDENTITY, assertResultVar)),
-		Block.each(RamaAssert::failedAssert1, arg));
+        Block
+        .each(fn, arg).out(assertResultVar)
+        .ifTrue(
+                new Expr(Ops.NOT, new Expr(Ops.IDENTITY, assertResultVar)),
+                Block.each(RamaAssert::failedAssert1, arg));
     } else {
       return Block.create();
     }
@@ -70,11 +104,11 @@ public class RamaAssert {
     final String assertResultVar = Helpers.genVar("assertResult");
     if (isAssertEnabled()) {
       return
-	Block
-	.each(fn, arg0, arg1).out(assertResultVar)
-	.ifTrue(
-		new Expr(Ops.NOT, new Expr(Ops.IDENTITY, assertResultVar)),
-		Block.each(RamaAssert::failedAssert2, arg0, arg1));
+        Block
+        .each(fn, arg0, arg1).out(assertResultVar)
+        .ifTrue(
+                new Expr(Ops.NOT, new Expr(Ops.IDENTITY, assertResultVar)),
+                Block.each(RamaAssert::failedAssert2, arg0, arg1));
     } else {
       return Block.create();
     }

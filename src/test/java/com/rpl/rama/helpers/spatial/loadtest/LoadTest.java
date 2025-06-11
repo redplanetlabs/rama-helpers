@@ -262,9 +262,7 @@ public class LoadTest {
 
       MicrobatchTopology m = topologies.microbatch("m");
       m.pstate("$$object", PState.mapSchema(Long.class, Object.class));
-      m.pstate("$$loadData", LoadData.class)
-          .global()
-          .initialValue(new LoadData());
+      m.pstate("$$loadData", LoadData.class).initialValue(new LoadData());
 
       // This is just a test convenience
       m.pstate("$$objectLookup", PState.mapSchema(Object.class, Long.class));
@@ -283,6 +281,7 @@ public class LoadTest {
 
       // ETL
       m.source("*depot").out("*microbatch")
+          .each(Ops.LOG_TRACE, LOGGER, "New microbatch")
           .batchBlock(
             Block
             // .each(Ops.LOG_TRACE, LOGGER, "New Microbatch")
@@ -301,26 +300,33 @@ public class LoadTest {
             .hashPartition("$$objectLookup", "*object")
             .localTransform("$$objectLookup",
                             Path.key("*object").termVal("*objectId"))
-            // .each(Ops.LOG_TRACE, LOGGER,
-            //       new Expr(Ops.TO_STRING,
-            //                "Added object", "*objectId", "*object", "*bounds"))
+            .each(Ops.LOG_TRACE, LOGGER,
+                  new Expr(Ops.TO_STRING,
+                           "Added object", "*objectId", "*object", "*bounds"))
             .globalPartition()
             .agg(Agg.list(new Expr(Ops.TUPLE,
                                    "*bounds",
-                                   "*objectId")))
-            .out("$$objects")
+                                   "*objectId"))).out("$$objects")
             .localSelect("$$objects",
                          Path.stay().view(Counted::count)).out("*numObjects")
             .each(Ops.LOG_DEBUG, LOGGER,
                   new Expr(Ops.TO_STRING, "numObjects: ", "*numObjects"))
+            // .each(Ops.CURRENT_TASK_ID).out("*taskIdTmp")
             .ifTrue(
               new Expr(Ops.IS_POSITIVE, "*numObjects"),
-              Block.localTransform(
+              Block
+              .localTransform(
                 "$$loadData",
                 Path.term(LoadData::someProcessed, "*numObjects")),
-              Block.localTransform(
+              Block
+              .localTransform(
                 "$$loadData",
                 Path.term(LoadData::noneProcessed)))
+            // .directPartition("*taskIdTmp")
+            // .globalPartition()
+            // .depotPartitionAppend("*statsDepot", "*numObjects")
+            .each(Ops.LOG_DEBUG, LOGGER,
+                  new Expr(Ops.TO_STRING, "before handleModifications")))
             .macro(
               rTree.handleModifications(
                 "$$objects",
@@ -328,18 +334,43 @@ public class LoadTest {
                   collector.addObject(
                     (MBR) data.get(0),
                     (Long) data.get(1));
-                })));
+                }));
 
       m.source("*statsDepot").out("*microbatch")
-          .globalPartition()
-          .localTransform("$$loadData", Path.term(LoadData::reset));
+          .explodeMicrobatch("*microbatch").out("*data")
+          .ifTrue(
+            new Expr(Ops.IS_INSTANCE_OF, Long.class, "*data"),
+            Block.ifTrue(
+              new Expr(Ops.IS_POSITIVE, "*data"),
+              Block
+              .localTransform(
+                "$$loadData",
+                Path.term(LoadData::someProcessed, "*data")),
+              Block
+              .localTransform(
+                "$$loadData",
+                Path.term(LoadData::noneProcessed))),
+            Block.localTransform("$$loadData", Path.term(LoadData::reset)))
+          ;
 
       topologies.query("loadData").out("*finalLoadData")
           // .each(Ops.LOG_TRACE, LOGGER,"allProcessed")
-          .globalPartition()
           .localSelect("$$loadData", Path.stay()).out("*loadData")
+          .macro(extractJavaFields("*loadData",
+                                   "*numProcessed",
+                                   "*processingStart", "*processingEnd"))
+          .each(LoadData::isAllProcessed, "*loadData").out("*allProcessed")
+          .keepTrue(new Expr(Ops.GREATER_THAN, "*processingStart", 0L))
           .originPartition()
-          .agg(Agg.last("*loadData")).out("*finalLoadData");
+          .agg(Agg.sum("*numProcessed")).out("*totalProcessed")
+          .agg(Agg.min("*processingStart")).out("*minStart")
+          .agg(Agg.max("*processingEnd")).out("*maxEnd")
+          .agg(Agg.and("*allProcessed")).out("*allAllProcessed")
+          .each(Ops.TUPLE,
+                "*totalProcessed",
+                "*minStart",
+                "*maxEnd",
+                "*allAllProcessed").out("*finalLoadData");
 
       topologies.query("resetData").out("*out")
           .globalPartition()
@@ -475,21 +506,25 @@ public class LoadTest {
               .invokeQuery("*loadDataQuery").out("*loadData")
               .each(Ops.LOG_DEBUG, LOGGER,
                     new Expr(Ops.TO_STRING, "loadData: ", "*loadData"))
+              .each(Ops.EXPAND, "*loadData").out("*totalProcessed",
+                                                 "*minStart",
+                                                 "*maxEnd",
+                                                 "*allProcessed")
               .ifTrue(
-                new Expr(LoadData::isAllProcessed, "*loadData"),
+                "*allProcessed",
                 Block
                 .each(Ops.IDENTITY,
                       LoadTestStateMachine.LoadTestState.QUERY_PERFORMANCE)
                 .out("*nextState")
                 .macro(statemachine.stateMachine.transitionTo("*nextState"))
+                .each(Ops.MINUS_LONG, "*maxEnd", "*minStart").out("*duration")
+                .each(Ops.DIV, "*totalProcessed", "*duration").out("*rate")
                 .each(Ops.LOG_INFO, LOGGER,
                       new Expr(Ops.TO_STRING,
-                               "Processed: ",
-                               new Expr(LoadData::getNumProcessed, "*loadData"),
-                               " records in ",
-                               new Expr(LoadData::processingDuration, "*loadData"),
+                               "Processed: ", "*totalProcessed",
+                               " records in ", "*duration",
                                "secs, processing rate (records/sec): ",
-                               new Expr(LoadData::processingRate, "*loadData")))),
+                               "*rate"))),
 
               Case.create(
                 new Expr(Ops.EQUAL,
