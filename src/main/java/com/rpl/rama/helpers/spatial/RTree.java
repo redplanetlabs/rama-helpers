@@ -194,7 +194,7 @@ public class RTree implements RamaSerializable {
       .each(Ops.LOG_DEBUG, LOGGER, "broadcastRootNodeValue")
       .macro(RamaAssert.assertMacro(
         new Expr(Ops.EQUAL, 0, new Expr(Ops.CURRENT_TASK_ID)),
-        "AA"))
+        "AAA"))
       .allPartition()
       .macro(writeRoot(rootNodeVar))
       .each(Ops.IDENTITY, rootNodeVar).out("*d")
@@ -211,7 +211,6 @@ public class RTree implements RamaSerializable {
         //       new Expr(Ops.TO_STRING,
         //                "Updating global partitions: ",
         //                "*rootNode"))
-        .each(Ops.LOG_DEBUG, LOGGER, "BBB")
         .macro(broadcastRootNodeValue("*rootNode"));
   }
 
@@ -247,7 +246,6 @@ public class RTree implements RamaSerializable {
                       rootNodeIdVar).out(rootNodeVar),
                 Block
                 .each(Ops.IDENTITY, currentRootNodeVar).out(rootNodeVar))
-        .each(Ops.LOG_DEBUG, LOGGER, "CCC")
         .each(Ops.LOG_DEBUG, LOGGER, "broadcastRootNodeValue")
         .macro(RamaAssert.assertMacro(
           new Expr(Ops.EQUAL, 0, new Expr(Ops.CURRENT_TASK_ID)),
@@ -269,8 +267,8 @@ public class RTree implements RamaSerializable {
 
   protected Block writeNode(final String nodeIdVar, final String nodeVar) {
     return Block
-        .each(Ops.LOG_TRACE, LOGGER,
-              new Expr(Ops.TO_STRING, "writeNode: ", nodeIdVar, " ", nodeVar))
+        // .each(Ops.LOG_TRACE, LOGGER,
+        //       new Expr(Ops.TO_STRING, "writeNode: ", nodeIdVar, " ", nodeVar))
         .hashPartition(nodeIdVar)
         .localTransform(nodesPstate, Path.key(nodeIdVar).termVal(nodeVar));
   }
@@ -347,7 +345,7 @@ public class RTree implements RamaSerializable {
         (Child child) ->
         (Double)child.bounds.getCenter(child.bounds.dimensions() - dimension)))
       .collect(Collectors.toList()));
-    LOGGER.trace("STR A children: " + children);
+    // LOGGER.trace("STR A children: " + children);
     PersistentVector unsortedSlices =
          // create numSlices partitions
          Vector.partitionAll(numChildren/numSlices, children);
@@ -463,8 +461,8 @@ public class RTree implements RamaSerializable {
             //                "numNewSiblings: ", "*numNewSiblings",
             //                " size: ", new Expr(Ops.SIZE, "*siblings")))
             .macro(idGenerator.genId("*newNodeId"))
-            .each(Ops.LOG_DEBUG, LOGGER,
-                  "New node id (sibling): {}", "*newNodeId")
+            // .each(Ops.LOG_DEBUG, LOGGER,
+            //       "New node id (sibling): {}", "*newNodeId")
             .each(Node::newSibling,
                   "*currentNode",
                   "*newNodeId").out("*newNode")
@@ -904,10 +902,9 @@ public class RTree implements RamaSerializable {
     final RTreeConvertorFunction<T> dataConvertor,
     final String modTableVar) {
     return Block
-        .each(Ops.LOG_DEBUG, LOGGER, "buildModTable")
+        // .each(Ops.LOG_TRACE, LOGGER, "buildModTable")
         .each(RTree::emptySortedMap).out("*emptyMap")
         .localTransform(modTableVar, Path.termVal("*emptyMap"))
-        .each(Ops.LOG_DEBUG, LOGGER, "buildModTable 2")
         .macro(rootNode("*rootNode"))
         // .macro(explode(microbatchVar, "*data"))
         // .explodeMicrobatch(microbatchVar).out("*data")
@@ -947,7 +944,7 @@ public class RTree implements RamaSerializable {
         // .compoundAgg(
         //   CompoundAgg.map("*tmpKey",
         //                   Agg.list("*modification"))).out(modTableVar)
-        .each(Ops.LOG_DEBUG, LOGGER, "buildModTable end")
+        // .each(Ops.LOG_TRACE, LOGGER, "buildModTable end")
         ;
   }
 
@@ -1201,20 +1198,20 @@ public class RTree implements RamaSerializable {
                 //       new Expr(Ops.TO_STRING,
                 //                "TABLE ID: ", "*opNodeId",
                 //                ", level: ", "*level"))
-                .each(Ops.LOG_TRACE,
-                      LOGGER,
-                      new Expr(Ops.TO_STRING,
-                               "opNodeId: ", "*opNodeId",
-                               ", nodeOpsList: ", "*nodeOpsList"))
+                // .each(Ops.LOG_TRACE,
+                //       LOGGER,
+                //       new Expr(Ops.TO_STRING,
+                //                "opNodeId: ", "*opNodeId",
+                //                ", nodeOpsList: ", "*nodeOpsList"))
                 .macro(updateNode(M,
                                   idGenerator,
                                   "*currentNode",
                                   "*nodeOpsList",
                                   "*newSiblings"))
-                .each(Ops.LOG_TRACE,
-                      LOGGER,
-                      new Expr(Ops.TO_STRING,
-                               "UpdateNodes new siblings: ", "*newSiblings"))
+                // .each(Ops.LOG_TRACE,
+                //       LOGGER,
+                //       new Expr(Ops.TO_STRING,
+                //                "UpdateNodes new siblings: ", "*newSiblings"))
                 .each(List<Object>::size,"*newSiblings").out("*numSiblings")
                 .each(Node::isRoot, "*currentNode").out("*isRoot")
                 .each(Ops.INC_LONG, "*level").out("*nextLevel")
@@ -1243,8 +1240,8 @@ public class RTree implements RamaSerializable {
                     // adjustments MUST be made on "root" partition
                     .hashPartition("root")
                     .macro(idGenerator.genId("*parentId"))
-                    .each(Ops.LOG_DEBUG, LOGGER,
-                          "New node id (root): {}", "*parentId")
+                    // .each(Ops.LOG_DEBUG, LOGGER,
+                    //       "New node id (root): {}", "*parentId")
                     .each(RTree::createRootNode, "*parentId").out("*parent")
                     .each(Node::add,
                           "*parent",
@@ -1264,7 +1261,6 @@ public class RTree implements RamaSerializable {
                     //.directPartition("*taskId")
 
                     .macro(writeRoot("*parent"))
-                    .each(Ops.LOG_DEBUG, LOGGER, "AAA")
                     // .subBatch(broadcastRootNodeValue("*parent")).out("*dummy")
                     .directPartition("*tmpTaskId")
                     // ------ End of root update

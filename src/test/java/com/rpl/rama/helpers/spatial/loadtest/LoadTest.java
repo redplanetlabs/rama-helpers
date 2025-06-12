@@ -386,6 +386,7 @@ public class LoadTest {
   public static class Module implements RamaModule {
 
     static long seed = 0; // (new Random()).nextLong();
+    static boolean enabled = false;
 
     LoadTestStateMachine statemachine = new LoadTestStateMachine();
 
@@ -408,6 +409,15 @@ public class LoadTest {
       Random random = new Random(seed);
       seed = random.nextLong();
       return random;
+    }
+
+    public static boolean setEnabled(Boolean flag) {
+      enabled = flag;
+      return enabled;
+    }
+
+    public static boolean isNotEnabled() {
+      return !enabled;
     }
 
     @Override
@@ -490,8 +500,11 @@ public class LoadTest {
                          "*state",
                          LoadTestStateMachine.LoadTestState.ENABLE_MB))
               .each(Ops.LOG_DEBUG, LOGGER, "TIME_PROCESSING")
-              .each(Module::setTopologyActive, spatialModuleName, "m", true)
-              .invokeQuery("*resetDataQuery").out("*xxx")
+              .ifTrue(new Expr(Module::isNotEnabled),
+                Block
+                .each(Module::setTopologyActive, spatialModuleName, "m", true)
+                .each(Module::setEnabled, true)
+                .invokeQuery("*resetDataQuery").out("*xxx"))
               // .globalPartition()
               // .localTransform("$$loadData", Path.term(LoadData::reset))
               // .each(Ops.IDENTITY,
@@ -520,7 +533,8 @@ public class LoadTest {
                 .out("*nextState")
                 .macro(statemachine.stateMachine.transitionTo("*nextState"))
                 .each(Ops.MINUS_LONG, "*maxEnd", "*minStart").out("*duration")
-                .each(Ops.DIV, "*totalProcessed", "*duration").out("*rate")
+                .each(Ops.DIV, "*totalProcessed", "*duration").out("*ratePerMs")
+                .each(Ops.TIMES_LONG, "*ratePerMs", 1000.0).out("*rate")
                 .each(Ops.LOG_INFO, LOGGER,
                       new Expr(Ops.TO_STRING,
                                "Processed: ", "*totalProcessed",
