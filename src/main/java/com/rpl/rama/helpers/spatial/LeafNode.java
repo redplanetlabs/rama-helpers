@@ -17,6 +17,13 @@ public class LeafNode extends Node {
     /* this.objects = new ArrayList<>(); */
   }
 
+  public LeafNode(long parent) {
+    super(parent);
+    /* this.id = id; */
+    /* this.parent = parent; */
+    /* this.objects = new ArrayList<>(); */
+  }
+
   @Override
   public String toString() {
     return "Leaf" + super.toString();
@@ -33,6 +40,10 @@ public class LeafNode extends Node {
   }
 
   public LeafNode newSibling(long id) {
+    return new LeafNode(id, parent);
+  }
+
+  public LeafNode newSibling() {
     return new LeafNode(id, parent);
   }
 
@@ -189,7 +200,7 @@ public class LeafNode extends Node {
   /* 	bounds = bounds.union(child.bounds); */
   /*   } */
   /*   return bounds; */
-	/* } */
+        /* } */
 
   public List<String> dotNodes() {
     final String selfNode = "" + id + " [label=\"" + id + "\"]";
@@ -197,7 +208,7 @@ public class LeafNode extends Node {
     final List<String> objs = ((Collection<Child>)children)
       .stream()
       .map((Child child) ->
-	   "obj_" + child.id + " [label=\"obj_" + child.id + "\"]")
+           "obj_" + child.id + " [label=\"obj_" + child.id + "\"]")
       .collect(Collectors.toList());
     objs.add(selfNode);
     return objs;
@@ -207,9 +218,9 @@ public class LeafNode extends Node {
     return ((Collection<Child>)children)
       .stream()
       .map((Child child)
-	   ->
-	   "" + id + " -> obj_" + child.id
-	   + " [label=\"" + child.bounds.ranges()+"\"]")
+           ->
+           "" + id + " -> obj_" + child.id
+           + " [label=\"" + child.bounds.ranges()+"\"]")
       .collect(Collectors.toList());
   }
 }

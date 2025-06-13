@@ -258,7 +258,7 @@ public class LoadTest {
       setup.declareDepot("*depot", Depot.random());
       setup.declareDepot("*statsDepot", Depot.random());
 
-      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 100);
+      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 50);
 
       MicrobatchTopology m = topologies.microbatch("m");
       m.pstate("$$object", PState.mapSchema(Long.class, Object.class));
@@ -281,7 +281,7 @@ public class LoadTest {
 
       // ETL
       m.source("*depot").out("*microbatch")
-          .each(Ops.LOG_TRACE, LOGGER, "New microbatch")
+          .each(Ops.LOG_DEBUG, LOGGER, "New microbatch")
           .batchBlock(
             Block
             // .each(Ops.LOG_TRACE, LOGGER, "New Microbatch")

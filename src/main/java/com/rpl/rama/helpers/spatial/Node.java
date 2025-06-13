@@ -15,12 +15,17 @@ import clojure.lang.PersistentVector;
 
 // TODO custom read/write
 public abstract class Node implements INode, RamaSerializable {
-  final long id;
+  Long id;
   long parent;
   PersistentVector children;
 
-  public Node(long id, long parent) {
+  public Node(Long id, long parent) {
     this.id = id;
+    this.parent = parent;
+    this.children = Vector.empty();
+  }
+
+  public Node(long parent) {
     this.parent = parent;
     this.children = Vector.empty();
   }
@@ -72,6 +77,11 @@ public abstract class Node implements INode, RamaSerializable {
   }
 
   public long nodeId() {
+    return id;
+  }
+
+  public long setNodeId(long id) {
+    this.id = id;
     return id;
   }
 

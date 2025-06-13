@@ -11,8 +11,12 @@ public class NonLeafNode extends Node {
   /* long parent; */
   /* List<Child> children; */
 
-  public NonLeafNode(long id, long parent) {
+  public NonLeafNode(Long id, Long parent) {
     super(id, parent);
+  }
+
+  public NonLeafNode(long parent) {
+    super(parent);
   }
 
   @Override
@@ -26,6 +30,10 @@ public class NonLeafNode extends Node {
 
   public NonLeafNode newSibling(long id) {
     return new NonLeafNode(id, parent);
+  }
+
+  public NonLeafNode newSibling() {
+    return new NonLeafNode(null, parent);
   }
 
   /* public long count() { */
@@ -73,7 +81,7 @@ public class NonLeafNode extends Node {
   /* 	} */
   /*   } */
   /*   return this; */
-	/* } */
+        /* } */
 
   public List<String> dotNodes() {
     return (List<String>) Arrays.asList("" + id + " [label=\"" + id + "\"]");
@@ -83,8 +91,8 @@ public class NonLeafNode extends Node {
     return ((Collection<Child>)children)
       .stream()
       .map((Child child) ->
-	   "" + id + " -> " + child.id
-	   + " [label=\"" + child.bounds.ranges()+"\"]")
+           "" + id + " -> " + child.id
+           + " [label=\"" + child.bounds.ranges()+"\"]")
       .collect(Collectors.toList());
   }
 
