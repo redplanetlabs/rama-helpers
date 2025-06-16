@@ -220,7 +220,7 @@ public class RTreeTest {
 
         assertTrue(rootNode instanceof NonLeafNode);
         assertFalse(rootNode.isLeaf());
-        assertEquals(2, rootNode.nodeId());
+        assertEquals(Long.valueOf(2), rootNode.nodeId());
         assertEquals(2, rootNode.parentId());
         assertEquals(2, rootNode.count());
         {
@@ -231,7 +231,7 @@ public class RTreeTest {
         }
         assertEquals(allBounds, rootNode.bounds());
 
-        assertEquals(0, childNode0.nodeId());
+        assertEquals(Long.valueOf(0), childNode0.nodeId());
         assertEquals(2, childNode0.parentId());
         assertTrue(childNode0.isLeaf());
         assertEquals(2, childNode0.count());
@@ -243,7 +243,7 @@ public class RTreeTest {
         }
         assertEquals(twoBounds, childNode0.bounds());
 
-        assertEquals(1, childNode1.nodeId());
+        assertEquals(Long.valueOf(1), childNode1.nodeId());
         assertEquals(2, childNode1.parentId());
         assertTrue(childNode0.isLeaf());
         assertEquals(1, childNode1.count()); // object 2
@@ -340,12 +340,14 @@ public class RTreeTest {
 
         LOGGER.error("Verify " + verify.invoke());
 
-        assertEquals(new ArrayList<>(Arrays.asList(398046511106L,
-                                                   0L,
-                                                   4398046511104L,
-                                                   1L,
-                                                   4398046511105L)),
-                     new ArrayList<>((List<Long>)q.invoke(oneBounds)));
+        assertEquals(
+          new ArrayList<>(
+            Arrays.asList(1L,
+                          0L,
+                          4398046511104L,
+                          4398046511105L,
+                          4398046511106L)),
+          new ArrayList<>((List<Long>)q.invoke(oneBounds)));
         assertEquals(new ArrayList<>(Arrays.asList(398046511106L,
                                                    4398046511104L,
                                                    4398046511105L,

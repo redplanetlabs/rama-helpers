@@ -26,6 +26,7 @@ public abstract class Node implements INode, RamaSerializable {
   }
 
   public Node(long parent) {
+    this.id = null;
     this.parent = parent;
     this.children = Vector.empty();
   }
@@ -76,7 +77,7 @@ public abstract class Node implements INode, RamaSerializable {
     return this;
   }
 
-  public long nodeId() {
+  public Long nodeId() {
     return id;
   }
 

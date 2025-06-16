@@ -10,7 +10,7 @@ public class LeafNode extends Node {
   /* long parent; */
   /* final List<Child> objects; */
 
-  public LeafNode(long id, long parent) {
+  public LeafNode(Long id, long parent) {
     super(id, parent);
     /* this.id = id; */
     /* this.parent = parent; */
@@ -44,7 +44,7 @@ public class LeafNode extends Node {
   }
 
   public LeafNode newSibling() {
-    return new LeafNode(id, parent);
+    return new LeafNode(null, parent);
   }
 
   /* public long count() { */

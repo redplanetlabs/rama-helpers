@@ -204,22 +204,47 @@ public class RTree implements RamaSerializable {
 
   private Block latestRootNode() {
     return Block
+        .each(Ops.LOG_DEBUG, LOGGER, "latestRootNode")
+        // .materialize().out("$$rootNodes")
         .allPartition()
+        // .localTransform("$$rootNodes", Path.termVal(Vector.empty()))
+        .each(Ops.LOG_DEBUG, LOGGER, "latestRootNode preAgg")
         .localSelect("$$rootUpdate", Path.stay()).out("*nodeId")
+        .each(Ops.LOG_DEBUG, LOGGER,
+              "latestRootNode preAgg nodeId {}", "*nodeId")
+        .keepTrue(new Expr(Ops.IS_NOT_NULL, "*nodeId"))
         .macro(readNode("*nodeId", "*node"))
+        .each(Ops.LOG_DEBUG, LOGGER, "read node returned: {}", "*node")
         .keepTrue(new Expr(Node::isRoot, "*node"))
+        .each(Ops.LOG_DEBUG, LOGGER, "latestRootNode preAgg complete")
         .globalPartition()
+        .each(Ops.LOG_DEBUG, LOGGER, "latestRootNode Global Partition")
+        .each(Ops.LOG_DEBUG, LOGGER,
+              "latestRootNode Global Partition: node {}", "*node")
         .agg(Agg.list("*node")).out("$$rootNodes")
+        // .localTransform("$$rootNodes", Path.afterElem().termVal("*node"))
+        .each(Ops.LOG_DEBUG, LOGGER, "latestRootNode A2")
         .localSelect("$$rootNodes", Path.stay()).out("*nodes")
+        .each(Ops.LOG_DEBUG, LOGGER, "latestRootNode AA {}", "*nodes")
         .each(Counted::count, "*nodes").out("*numRoots")
-        .macro(RamaAssert.assertMacro(new Expr(Ops.EQUAL, 1, "*numRoots")))
-        .each(Vector::peek, "*nodes").out("*firstNode")
-        .localTransform(rootPstate, Path.termVal("*firstNode"));
+        .each(Ops.LOG_DEBUG, LOGGER, "latestRootNode B {}", "*numRoots")
+        .ifTrue(
+          new Expr(Ops.IS_POSITIVE, "*numRoots"),
+          Block
+          .each(Ops.LOG_DEBUG, LOGGER, "latestRootNode _C")
+          .macro(RamaAssert.assertMacro(new Expr(Ops.EQUAL, 1, "*numRoots"),
+                                        "one root"))
+          .each(Ops.LOG_DEBUG, LOGGER, "latestRootNode C")
+          .each(Vector::peek, "*nodes").out("*firstNode")
+          .each(Ops.LOG_DEBUG, LOGGER, "latestRootNode D")
+          .localTransform(rootPstate, Path.termVal("*firstNode")))
+        .each(Ops.LOG_DEBUG, LOGGER, "latestRootNode done");
   }
 
   /** Broadcast root node to all tasks */
   private Block propagateRootNode() {
     return Block
+        .each(Ops.LOG_DEBUG, LOGGER, "propagateRootNode")
         .macro(rootNode("*rootNode"))
         // .each(Ops.LOG_TRACE,
         //       LOGGER,
@@ -258,7 +283,9 @@ public class RTree implements RamaSerializable {
                 .macro(idGenerator.genId(rootNodeIdVar))
                 .each(RTree::constructRoot,
                       this,
-                      rootNodeIdVar).out(rootNodeVar),
+                      rootNodeIdVar).out(rootNodeVar)
+                .macro(writeNode(rootNodeIdVar, rootNodeVar))
+                .localTransform("$$rootUpdate", Path.termVal(rootNodeIdVar)),
                 Block
                 .each(Ops.IDENTITY, currentRootNodeVar).out(rootNodeVar))
         .each(Ops.LOG_DEBUG, LOGGER, "broadcastRootNodeValue")
@@ -266,16 +293,13 @@ public class RTree implements RamaSerializable {
           new Expr(Ops.EQUAL, 0, new Expr(Ops.CURRENT_TASK_ID)),
           "AA"))
         .allPartition()
-        .macro(writeRoot(rootNodeVar))
-        .each(Ops.IDENTITY, rootNodeVar).out("*d")
-        .globalPartition()
-        .agg(Agg.last("*d")).out("*dummy");
+        .macro(writeRoot(rootNodeVar));
   }
 
   protected Block readNode(final String nodeIdVar, final String nodeVar) {
     return Block
-        // .each(Ops.LOG_TRACE, LOGGER,
-        //       new Expr(Ops.TO_STRING, "readNode: ", nodeIdVar))
+        .each(Ops.LOG_TRACE, LOGGER,
+              new Expr(Ops.TO_STRING, "readNode: ", nodeIdVar))
         .hashPartition(nodeIdVar)
         .localSelect(nodesPstate, Path.key(nodeIdVar)).out(nodeVar);
   }
@@ -412,7 +436,7 @@ public class RTree implements RamaSerializable {
     PersistentVector allChildren = allChildren(node, nodeOps);
     PersistentVector groupedChildren = strGroupChildren(allChildren);
     // Create as many siblings as needed.
-    ArrayList<Node> emptySiblings = new ArrayList<>();
+    // ArrayList<Node> emptySiblings = new ArrayList<>();
     int numGroups = groupedChildren.size();
 
     List<INode> newSiblings = Stream.generate(() -> node.newSibling())
@@ -431,6 +455,9 @@ public class RTree implements RamaSerializable {
                                               (List)groupedChildren.get(i + 1));
       currentNode.children = children;
     }
+
+    newSiblings.add(0, node);
+
     return Arrays.asList(
       node.isRoot() && numGroups>1 ? null : node.parent,
       newSiblings);
@@ -529,25 +556,37 @@ public class RTree implements RamaSerializable {
         .ifTrue(new Expr(Ops.IS_NULL, "*newParentId"),
                 Block.macro(idGenerator.genId(parentIdVar)),
                 Block.each(Ops.IDENTITY, "*newParentId").out(parentIdVar))
-        .each(Node::nodeId, nodeVar).out("*currentNodeId")
-        .each(Node::setParentId, nodeVar, parentIdVar)
-        .localTransform(
-          nodesPstate,
-          Path.key("*currentNodeId").termVal(nodeVar))
-
+        // .each(Node::nodeId, nodeVar).out("*currentNodeId")
+        // .each(Node::setParentId, nodeVar, parentIdVar)
+        // .hashPartition("*currentNodeId")
+        // .localTransform(
+        //   nodesPstate,
+        //   Path.key("*currentNodeId").termVal(nodeVar))
+        .each(Ops.LOG_DEBUG, LOGGER, "Explode siblings {}", "*newSiblingsList")
+        .each(List<Node>::size, "*newSiblingsList").out("*numSiblings")
+        .each(Ops.GREATER_THAN, "*numSiblings", 1).out("*needsOps")
         .each(Ops.EXPLODE,"*newSiblingsList").out("*sibling")
-        .macro(idGenerator.genId("*newId"))
+        .each(Ops.LOG_DEBUG, LOGGER, "Explode sibling: {}", "*sibling")
+        .each(Node::nodeId, "*sibling").out("*existingNodeId")
+        .each(Ops.LOG_DEBUG, LOGGER, "Explode siblings A {}", "*existingNodeId")
+        .ifTrue(new Expr(Ops.IS_NULL, "*existingNodeId"),
+                Block
+                .macro(idGenerator.genId("*newId"))
+                .each(Node::setNodeId, "*sibling", "*newId"),
+                Block.each(Ops.IDENTITY, "*existingNodeId").out("*newId"))
+        .each(Ops.LOG_DEBUG, LOGGER, "Explode write sibling")
         .hashPartition("*newId")
-        .each(Node::setNodeId, "*sibling", "*newId")
         .each(Node::setParentId, "*sibling", parentIdVar)
         .localTransform(nodesPstate,
                         Path
                         .key("*newId")
                         .termVal("*sibling"))
         .each(Node::unionBounds, "*sibling").out("*newBounds")
-        .each(RTreeCollector.AddObject::mkAddObject,
-              "*newBounds",
-              "*newId").out(parentOpVar)
+        .ifTrue("*needsOps",
+                Block.each(RTreeCollector.AddObject::mkAddObject,
+                           "*newBounds",
+                           "*newId").out(parentOpVar),
+                Block.each(Ops.IDENTITY, null).out(parentOpVar))
         // bind parent nod
 
 
@@ -1069,6 +1108,7 @@ public class RTree implements RamaSerializable {
           Block.each(Ops.IDENTITY, tmpNodeVar).out(nodeVar),
           Block
           .each(Ops.LOG_DEBUG, LOGGER, "new root node {}", nodeIdVar)
+          .hashPartition(nodeIdVar)
           .localTransform("$$rootUpdate", Path.termVal(nodeIdVar))
           .each(RTree::createRootNode, nodeIdVar).out(nodeVar))
 
@@ -1204,6 +1244,8 @@ public class RTree implements RamaSerializable {
     return Block
         .each(Ops.LOG_DEBUG, LOGGER, "handleModifications")
         .each(Ops.CURRENT_TASK_ID).out("*taskId")// TODO remove this
+        .batchBlock(Block.keepTrue(false).materialize().out("$$rootUpdate"))
+        .batchBlock(Block.keepTrue(false).materialize().out("$$modTable"))
         .batchBlock(Block
                     // .each(Ops.CURRENT_TASK_ID).out("*taskId")
                     .macro(ensureRootNode())
@@ -1218,8 +1260,6 @@ public class RTree implements RamaSerializable {
         .macro(RamaAssert.assertMacro(
           new Expr(Ops.EQUAL, 0, new Expr(Ops.CURRENT_TASK_ID)),
           "DD"))
-        .batchBlock(Block.keepTrue(false).materialize().out("$$modTable"))
-        .batchBlock(Block.keepTrue(false).materialize().out("$$rootUpdate"))
 
         // .directPartition("*taskId")
         .each(Ops.LOG_DEBUG, LOGGER, "handleModifications before build")
@@ -1302,7 +1342,7 @@ public class RTree implements RamaSerializable {
 
                                   "*parentId",
                                   "*parentOp"))
-
+                .keepTrue(new Expr(Ops.IS_NOT_NULL, "*parentOp"))
                 .hashPartition("*parentId")
                 .compoundAgg(
                   CompoundAgg.map(new Expr(ModTableKey::mkKey,
@@ -1405,6 +1445,9 @@ public class RTree implements RamaSerializable {
                 //                ", newOps: ", "*newOps"))
                           )
               .continueLoop()))
+
+          .batchBlock(Block.macro(latestRootNode()))
+          .batchBlock(Block.macro(propagateRootNode()))
           // .each(Ops.LOG_TRACE, LOGGER,  "Loop complete")
           .each(CURRENT_EVENT_NUM).out("*insertEvent")
 
@@ -1412,8 +1455,6 @@ public class RTree implements RamaSerializable {
           .macro(RamaAssert.assertMacro(
             new Expr(Ops.EQUAL, 0, new Expr(Ops.CURRENT_TASK_ID)),
             "GG"))
-          .batchBlock(Block.macro(latestRootNode()))
-          .batchBlock(Block.macro(propagateRootNode()))
           .each(CURRENT_EVENT_NUM).out("*endEvent")
           .each(Ops.MINUS,
                 "*afterBuildEvent", "*startEvent").out("*searchEvents")
