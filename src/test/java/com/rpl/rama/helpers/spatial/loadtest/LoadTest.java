@@ -281,7 +281,7 @@ public class LoadTest {
 
       // ETL
       m.source("*depot").out("*microbatch")
-          .each(Ops.LOG_DEBUG, LOGGER, "New microbatch")
+          .each(Ops.LOG_DEBUG, LOGGER, "Microbatch")
           .batchBlock(
             Block
             // .each(Ops.LOG_TRACE, LOGGER, "New Microbatch")
@@ -325,8 +325,9 @@ public class LoadTest {
             // .directPartition("*taskIdTmp")
             // .globalPartition()
             // .depotPartitionAppend("*statsDepot", "*numObjects")
-            .each(Ops.LOG_DEBUG, LOGGER,
-                  new Expr(Ops.TO_STRING, "before handleModifications")))
+            // .each(Ops.LOG_DEBUG, LOGGER,
+            //       new Expr(Ops.TO_STRING, "before handleModifications"))
+                      )
             .macro(
               rTree.handleModifications(
                 "$$objects",
@@ -334,9 +335,11 @@ public class LoadTest {
                   collector.addObject(
                     (MBR) data.get(0),
                     (Long) data.get(1));
-                }));
+                }))
+          .each(Ops.LOG_DEBUG, LOGGER, "Microbatch done");
 
       m.source("*statsDepot").out("*microbatch")
+          .each(Ops.LOG_DEBUG, LOGGER, "Microbatch statsDepot")
           .explodeMicrobatch("*microbatch").out("*data")
           .ifTrue(
             new Expr(Ops.IS_INSTANCE_OF, Long.class, "*data"),
@@ -351,6 +354,7 @@ public class LoadTest {
                 "$$loadData",
                 Path.term(LoadData::noneProcessed))),
             Block.localTransform("$$loadData", Path.term(LoadData::reset)))
+          .each(Ops.LOG_DEBUG, LOGGER, "Microbatch statsDepot done")
           ;
 
       topologies.query("loadData").out("*finalLoadData")
