@@ -202,7 +202,18 @@ public class LoadTest {
       return this;
     }
 
-    LoadData someProcessed(int n) {
+    // LoadData someProcessed(int n) {
+    //   LOGGER.debug("someProcessed: n=" + n + ", this=" + this);
+    //   if (neverProcessed) {
+    //     processingStart = Instant.now().toEpochMilli();
+    //     allProcessed = false;
+    //     neverProcessed = false;
+    //   }
+    //   numProcessed = numProcessed + n;
+    //   return this;
+    // }
+
+    LoadData someProcessed(long n) {
       LOGGER.debug("someProcessed: n=" + n + ", this=" + this);
       if (neverProcessed) {
         processingStart = Instant.now().toEpochMilli();
@@ -258,7 +269,7 @@ public class LoadTest {
       setup.declareDepot("*depot", Depot.random());
       setup.declareDepot("*statsDepot", Depot.random());
 
-      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 50);
+      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 128);
 
       MicrobatchTopology m = topologies.microbatch("m");
       m.pstate("$$object", PState.mapSchema(Long.class, Object.class));
@@ -271,7 +282,7 @@ public class LoadTest {
 
       // declare the RTree
       final int dimensions = 2;
-      final int branchingFactor = 8;
+      final int branchingFactor = 64;
       final int minChildren = 1;
       RTree rTree = new RTree(dimensions,
                               branchingFactor,
@@ -282,6 +293,8 @@ public class LoadTest {
       // ETL
       m.source("*depot").out("*microbatch")
           .each(Ops.LOG_DEBUG, LOGGER, "Microbatch")
+          .batchBlock(Block.keepTrue(false).materialize().out("$$objects"))
+
           .batchBlock(
             Block
             // .each(Ops.LOG_TRACE, LOGGER, "New Microbatch")
@@ -300,15 +313,15 @@ public class LoadTest {
             .hashPartition("$$objectLookup", "*object")
             .localTransform("$$objectLookup",
                             Path.key("*object").termVal("*objectId"))
+
             .each(Ops.LOG_TRACE, LOGGER,
                   new Expr(Ops.TO_STRING,
                            "Added object", "*objectId", "*object", "*bounds"))
+            .each(Ops.TUPLE, "*bounds", "*objectId").out("*tuple")
+            .localTransform("$$objects", Path.afterElem().termVal("*tuple"))
+            // TODO remove this hack for number of objects
             .globalPartition()
-            .agg(Agg.list(new Expr(Ops.TUPLE,
-                                   "*bounds",
-                                   "*objectId"))).out("$$objects")
-            .localSelect("$$objects",
-                         Path.stay().view(Counted::count)).out("*numObjects")
+            .agg(Agg.count()).out("*numObjects")
             .each(Ops.LOG_DEBUG, LOGGER,
                   new Expr(Ops.TO_STRING, "numObjects: ", "*numObjects"))
             // .each(Ops.CURRENT_TASK_ID).out("*taskIdTmp")
@@ -328,6 +341,7 @@ public class LoadTest {
             // .each(Ops.LOG_DEBUG, LOGGER,
             //       new Expr(Ops.TO_STRING, "before handleModifications"))
                       )
+
             .macro(
               rTree.handleModifications(
                 "$$objects",

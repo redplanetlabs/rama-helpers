@@ -107,51 +107,47 @@ public class RTree implements RamaSerializable {
                            final String boundsVar,
                            final String leafNodeVar) {
     final String isLeafVar = Helpers.genVar("isLeaf");
-    return Block
+    return
         // [Initialize.] Set N to be the root node.
         // CL2. [Leaf check.] If N is a leaf, return N
-        .each(Node::isLeaf, rootNodeVar).out(isLeafVar)
         // .each(Ops.LOG_TRACE,
         //       LOGGER,
         //       new Expr(Ops.TO_STRING,
         //                "chooseLeaf root isLeaf: " , isLeafVar))
-        .ifTrue(new Expr(Ops.EQUAL, isLeafVar, true),
-                Block
-                .each(Ops.IDENTITY, rootNodeVar).out(leafNodeVar),
 
-                // CL3. [Choose subtree.] If Af is not a leaf, let F be the
-                // entry in N whose rectangle F.I needs least enlargement to
-                // include E.I. Resolve ties by choosing the entry with the
-                // rectangle of smallest area
-                Block
-                .loopWithVars(
-                  LoopVars.var("*theNode", rootNodeVar),
-                  // CL4. [Descend until a leaf is reached.] Set N to be the
-                  // child node pointed to by F.p and repeat from CL2.
+
+        // CL3. [Choose subtree.] If Af is not a leaf, let F be the
+        // entry in N whose rectangle F.I needs least enlargement to
+        // include E.I. Resolve ties by choosing the entry with the
+        // rectangle of smallest area
+        Block
+        .loopWithVars(
+          LoopVars.var("*theNode", rootNodeVar),
+          // CL4. [Descend until a leaf is reached.] Set N to be the
+          // child node pointed to by F.p and repeat from CL2.
+          Block
+          .each(Node::isLeaf, "*theNode").out(isLeafVar)
+          .each(Node::nodeId, "*theNode").out("*nodeId")
+          // .each(Ops.LOG_TRACE,
+          //       LOGGER,
+          //       new Expr(Ops.TO_STRING,
+          //                "chooseLeaf loop, node: ",
+          //                "*theNode"))
+          .ifTrue(isLeafVar,
+                  // We have reached a leaf node, so emit it
+                  Block.emitLoop("*theNode"),
+                  // Not at a leaf node yet.
                   Block
-                  .yieldIfOvertime()
-                  .each(Node::isLeaf, "*theNode").out(isLeafVar)
-                  .each(Node::nodeId, "*theNode").out("*nodeId")
+                  .each(Node::chooseChild,
+                        "*theNode",
+                        boundsVar).out("*childId")
+                  .macro(readNode("*childId", "*childNode"))
                   // .each(Ops.LOG_TRACE,
                   //       LOGGER,
                   //       new Expr(Ops.TO_STRING,
-                  //                "chooseLeaf loop, node: ",
-                  //                "*theNode"))
-                  .ifTrue(isLeafVar,
-                    // We have reached a leaf node, so emit it
-                    Block.emitLoop("*theNode"),
-                    // Not at a leaf node yet.
-                    Block
-                    .each(Node::chooseChild,
-                          "*theNode",
-                          boundsVar).out("*childId")
-                    .macro(readNode("*childId", "*childNode"))
-                    // .each(Ops.LOG_TRACE,
-                    //       LOGGER,
-                    //       new Expr(Ops.TO_STRING,
-                    //                "Chosen child: ", "*childNode"))
-                    .continueLoop("*childNode")))
-                .out(leafNodeVar))
+                  //                "Chosen child: ", "*childNode"))
+                  .continueLoop("*childNode")))
+        .out(leafNodeVar)
         // .each(Ops.LOG_TRACE,
         //       LOGGER,
         //       new Expr(Ops.TO_STRING, "Chosen leaf: ", leafNodeVar))
@@ -288,15 +284,15 @@ public class RTree implements RamaSerializable {
                       this,
                       rootNodeIdVar).out(rootNodeVar)
                 .macro(writeNode(rootNodeIdVar, rootNodeVar))
-                .localTransform("$$rootUpdate", Path.termVal(rootNodeIdVar)),
+                .localTransform("$$rootUpdate", Path.termVal(rootNodeIdVar))
+                // .macro(RamaAssert.assertMacro(
+                //   new Expr(Ops.EQUAL, 0, new Expr(Ops.CURRENT_TASK_ID)),
+                //   "AA")),
+                .macro(writeRoot(rootNodeVar)),
                 Block
                 .each(Ops.IDENTITY, currentRootNodeVar).out(rootNodeVar))
         .each(Ops.LOG_DEBUG, LOGGER, "broadcastRootNodeValue")
-        .macro(RamaAssert.assertMacro(
-          new Expr(Ops.EQUAL, 0, new Expr(Ops.CURRENT_TASK_ID)),
-          "AA"))
-        .allPartition()
-        .macro(writeRoot(rootNodeVar));
+        .allPartition();
   }
 
   protected Block readNode(final String nodeIdVar, final String nodeVar) {
@@ -486,35 +482,40 @@ public class RTree implements RamaSerializable {
         // Stuff the original node and siblings using the sorted children.
         .each(RTree::updateNodeChildren,
               this, nodeVar, nodeOpsVar).out("*tuple")
-        .each(Ops.EXPAND, "*tuple").out("*newParentId", "*newSiblingsList")
-        .ifTrue(new Expr(Ops.IS_NULL, "*newParentId"),
-                Block.macro(idGenerator.genId(parentIdVar)),
-                Block.each(Ops.IDENTITY, "*newParentId").out(parentIdVar))
-        // .each(Ops.LOG_DEBUG, LOGGER, "Explode siblings {}", "*newSiblingsList")
+        .each(Ops.EXPAND, "*tuple").out(parentIdVar // "*newParentId"
+                                        , "*newSiblingsList")
+        // .ifTrue(new Expr(Ops.IS_NULL, "*newParentId"),
+        //         Block.macro(idGenerator.genId(parentIdVar)),
+        //         Block.each(Ops.IDENTITY, "*newParentId").out(parentIdVar))
+        .each(Ops.LOG_DEBUG, LOGGER, "Explode siblings {}", "*newSiblingsList")
         .each(List<Node>::size, "*newSiblingsList").out("*numSiblings")
         .each(Ops.GREATER_THAN, "*numSiblings", 1).out("*needsOps")
         .each(Ops.EXPLODE,"*newSiblingsList").out("*sibling")
-        // .each(Ops.LOG_DEBUG, LOGGER, "Explode sibling: {}", "*sibling")
+        .each(Ops.LOG_DEBUG, LOGGER, "Explode sibling: {}", "*sibling")
         .each(Node::nodeId, "*sibling").out("*existingNodeId")
-        // .each(Ops.LOG_DEBUG, LOGGER, "Explode siblings A {}", "*existingNodeId")
+        .each(Ops.LOG_DEBUG, LOGGER, "Explode siblings A {}", "*existingNodeId")
         .ifTrue(new Expr(Ops.IS_NULL, "*existingNodeId"),
                 Block
                 .macro(idGenerator.genId("*newId"))
                 .each(Node::setNodeId, "*sibling", "*newId"),
                 Block.each(Ops.IDENTITY, "*existingNodeId").out("*newId"))
-        // .each(Ops.LOG_DEBUG, LOGGER, "Explode write sibling")
+        .each(Ops.LOG_DEBUG, LOGGER, "Explode write sibling")
         .hashPartition("*newId")
         .each(Node::setParentId, "*sibling", parentIdVar)
+        .each(Ops.LOG_DEBUG, LOGGER, "DDD")
         .localTransform(nodesPstate,
                         Path
                         .key("*newId")
                         .termVal("*sibling"))
+        .each(Ops.LOG_DEBUG, LOGGER, "EEE")
         .each(Node::unionBounds, "*sibling").out("*newBounds")
+        .each(Ops.LOG_DEBUG, LOGGER, "FFF")
         .ifTrue("*needsOps",
                 Block.each(RTreeCollector.AddObject::mkAddObject,
                            "*newBounds",
                            "*newId").out(parentOpVar),
                 Block.each(Ops.IDENTITY, null).out(parentOpVar))
+        .each(Ops.LOG_DEBUG, LOGGER, "GGG")
         ;
   }
 
@@ -869,17 +870,18 @@ public class RTree implements RamaSerializable {
   }
 
   private <T> Block buildModTable(
-    final String microbatchVar,
+    final String userModTableVar,
     final RTreeConvertorFunction<T> dataConvertor,
     final String modTableVar,
     final String rootUpdateVar) {
     return Block
         .each(Ops.LOG_TRACE, LOGGER, "buildModTable")
+        .allPartition()
+        // TODO delete these
         .each(RTree::emptySortedMap).out("*emptyMap")
         .localTransform(modTableVar, Path.termVal("*emptyMap"))
-        .macro(rootNode("*rootNode"))
-        .allPartition()
-        .localSelect(microbatchVar, Path.all()).out("*data")
+
+        .localSelect(modTableVar, Path.all()).out("*data")
         // .each(Ops.LOG_TRACE, LOGGER,
         //       new Expr(Ops.TO_STRING, "DATA ", "*data"))
         .each((T data, OutputCollector collector) -> {
@@ -888,6 +890,7 @@ public class RTree implements RamaSerializable {
           },
           "*data").out("*modification")
 
+        .each(Ops.LOG_TRACE, LOGGER, "Modification")
         // .each(Ops.LOG_TRACE, LOGGER,
         //       new Expr(Ops.TO_STRING, "Modification ", "*modification"))
 
@@ -896,6 +899,7 @@ public class RTree implements RamaSerializable {
 
         // Find the node where this would be located
         // TODO parallel descent?
+        .macro(rootNode("*rootNode"))
         .macro(chooseLeaf("*rootNode", "*bounds", "*chosenNode"))
         .macro(RamaAssert.assertMacro((Node v) -> {return v != null; },
                                       "*chosenNode"))
@@ -903,7 +907,9 @@ public class RTree implements RamaSerializable {
         .each(ModTableKey::mkLeafKey,
               new Expr(Node::nodeId, "*chosenNode")).out("*tmpKey")
 
+        // TODO this is a single local transform
         .localSelect(modTableVar,
+                     // nullToList
                      Path.key("*tmpKey").nullToVal(Vector.empty())
                      ).out("*current")
         .each(Vector::conj, "*current", "*modification").out("*newValue")
@@ -940,8 +946,7 @@ public class RTree implements RamaSerializable {
         .out(noMoreOpsVar);
   }
 
-  private Block lookupNode(final String rootTaskIdVar,
-                           final String nodeIdVar,
+  private Block lookupNode(final String nodeIdVar,
                            final String nodeVar) {
 
     final String tmpNodeVar = Helpers.genVar("node");
@@ -952,14 +957,16 @@ public class RTree implements RamaSerializable {
           new Expr(Ops.IS_NOT_NULL, tmpNodeVar),
           Block.each(Ops.IDENTITY, tmpNodeVar).out(nodeVar),
           Block
+          .macro(RamaAssert.assertMacro(new Expr(Ops.IDENTITY, false),
+                                        "shouldnt get here"))
           .each(Ops.LOG_DEBUG, LOGGER, "new root node {}", nodeIdVar)
           .hashPartition(nodeIdVar)
           .localTransform("$$rootUpdate", Path.termVal(nodeIdVar))
           .each(RTree::createRootNode, nodeIdVar).out(nodeVar))
 
-        // .each(Ops.LOG_TRACE, LOGGER,
-        //       new Expr(Ops.TO_STRING,
-        //                "lookup nodeId: ", nodeIdVar, ", node: ", nodeVar))
+          // .each(Ops.LOG_TRACE, LOGGER,
+          //       new Expr(Ops.TO_STRING,
+          //                "lookup nodeId: ", nodeIdVar, ", node: ", nodeVar))
         .each(Ops.LOG_DEBUG, LOGGER,
               new Expr(Ops.TO_STRING,
                        "lookupNode: ", nodeIdVar,
@@ -1083,12 +1090,11 @@ public class RTree implements RamaSerializable {
   }
 
   public <T> Block handleModifications(
-    final String microbatchVar,
+    final String userModTableVar,
     final RTreeConvertorFunction<T> dataConvertor) {
 
     return Block
         .each(Ops.LOG_DEBUG, LOGGER, "handleModifications")
-        .each(Ops.CURRENT_TASK_ID).out("*taskId")// TODO remove this
         .batchBlock(Block.keepTrue(false).materialize().out("$$rootUpdate"))
         .batchBlock(Block.keepTrue(false).materialize().out("$$modTable"))
         .each(Ops.LOG_DEBUG, LOGGER, "ensureRootNode")
@@ -1104,12 +1110,8 @@ public class RTree implements RamaSerializable {
           new Expr(Ops.EQUAL, 0, new Expr(Ops.CURRENT_TASK_ID)),
           "DD"))
 
-        // .directPartition("*taskId")
         // .each(Ops.LOG_DEBUG, LOGGER, "handleModifications before build")
-        .macro(RamaAssert.assertMacro(
-          new Expr(Ops.EQUAL, 0, new Expr(Ops.CURRENT_TASK_ID)),
-          "EE"))
-        .batchBlock(Block.macro(buildModTable(microbatchVar,
+        .batchBlock(Block.macro(buildModTable(userModTableVar,
                                               dataConvertor,
                                               "$$modTable",
                                               "$$rootUpdate")))
@@ -1149,11 +1151,23 @@ public class RTree implements RamaSerializable {
                 .allPartition()
                 .each(Ops.LOG_TRACE, LOGGER, "Loop body for task")
                 .localSelect("$$modTable", Path.all()).out("*nodeOps")
+                .each(Ops.LOG_TRACE, LOGGER, "Loop body AA")
                 // TODO move this destructuring into updateNode
                 .each(Ops.FIRST, "*nodeOps").out("*modKey")
                 .macro(extractJavaFields("*modKey", "*opNodeId", "*level"))
                 .each(Ops.LAST, "*nodeOps").out("*nodeOpsList")
-                .macro(lookupNode("*taskId", "*opNodeId", "*currentNode"))
+                .each(Ops.LOG_TRACE, LOGGER, "Loop body BB")
+                .ifTrue(
+                  new Expr(Ops.IS_NOT_NULL, "*opNodeId"),
+                  Block
+                  .macro(lookupNode("*opNodeId", "*currentNode")),
+                  Block
+                  .macro(idGenerator.genId("*opNodeId1"))
+                  .each(Ops.LOG_DEBUG, LOGGER, "new root node {}", "*opNodeId1")
+                  .hashPartition("*opNodeId1")
+                  .localTransform("$$rootUpdate", Path.termVal("*opNodeId1"))
+                  .each(RTree::createRootNode, "*opNodeId1").out("*currentNode")
+                        )
 
                 // .each(Ops.LOG_ERROR, LOGGER,
                 //       new Expr(Ops.TO_STRING,
@@ -1164,6 +1178,7 @@ public class RTree implements RamaSerializable {
                 //       new Expr(Ops.TO_STRING,
                 //                "opNodeId: ", "*opNodeId",
                 //                ", nodeOpsList: ", "*nodeOpsList"))
+                .each(Ops.LOG_TRACE, LOGGER, "Loop body CC")
                 .macro(updateNode(M,
                                   idGenerator,
                                   "*currentNode",
