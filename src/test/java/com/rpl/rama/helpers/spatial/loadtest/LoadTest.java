@@ -322,8 +322,8 @@ public class LoadTest {
             // TODO remove this hack for number of objects
             .globalPartition()
             .agg(Agg.count()).out("*numObjects")
-            .each(Ops.LOG_DEBUG, LOGGER,
-                  new Expr(Ops.TO_STRING, "numObjects: ", "*numObjects"))
+            .each(Ops.LOG_DEBUG, LOGGER, "numObjects: {}", "*numObjects")
+
             // .each(Ops.CURRENT_TASK_ID).out("*taskIdTmp")
             .ifTrue(
               new Expr(Ops.IS_POSITIVE, "*numObjects"),
