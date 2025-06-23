@@ -72,6 +72,10 @@ public class LoadTest {
       pending = ConcurrentHashMap.newKeySet();
     }
 
+    public int getTotal() {
+      return 0;
+    }
+
     @Override
     public void prepareForTask(int taskId, TaskGlobalContext context) {
       File shapeFile = new File(
@@ -149,34 +153,6 @@ public class LoadTest {
     }
   }
 
-  // static LoadDataResult loadTigerData(final Loader loader) {
-  //   if (loader.features != null && loader.features.hasNext()) {
-  //     final List<AddObject> ops = new ArrayList<>();
-  //     final String nameAttribute = "NAME20";
-  //     final int numToAppend = 100;
-  //     for (int i = 0; i <= numToAppend; i = i + 1) {
-  //         if (loader.features.hasNext()) {
-  //           SimpleFeature feature = loader.features.next();
-  //           BoundingBox bounds = feature.getBounds();
-
-  //           MBR mbr = new MBR(new double[]{bounds.getMinX(), bounds.getMinY()},
-  //                             new double[]{bounds.getMaxX(), bounds.getMaxY()});
-
-  //           ops.add(new AddObject(mbr, feature.getAttribute(nameAttribute)));
-  //           // CompletableFuture<Map<String, Object>> cf =
-  //           //     depot.appendAsync(
-  //           //       new AddObject(mbr, feature.getAttribute(nameAttribute)),
-  //           //       AckLevel.NONE);
-  //           // cf.thenApply((_v) -> loader.pending.remove(cf));
-  //           // loader.pending.add(cf);
-  //         }
-  //       }
-  //     return new LoadDataResult(false, ops);
-  //   } else {
-  //     return new LoadDataResult(true, null);
-  //   }
-  // }
-
   public static class LoadData implements RamaSerializable {
     public Boolean allProcessed;
     public Boolean neverProcessed;
@@ -201,17 +177,6 @@ public class LoadTest {
       numProcessed = 0L;
       return this;
     }
-
-    // LoadData someProcessed(int n) {
-    //   LOGGER.debug("someProcessed: n=" + n + ", this=" + this);
-    //   if (neverProcessed) {
-    //     processingStart = Instant.now().toEpochMilli();
-    //     allProcessed = false;
-    //     neverProcessed = false;
-    //   }
-    //   numProcessed = numProcessed + n;
-    //   return this;
-    // }
 
     LoadData someProcessed(long n) {
       LOGGER.debug("someProcessed: n=" + n + ", this=" + this);
@@ -269,7 +234,10 @@ public class LoadTest {
       setup.declareDepot("*depot", Depot.random());
       setup.declareDepot("*statsDepot", Depot.random());
 
-      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 128);
+      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 4096);
+      setup.setLaunchModuleDynamicOption("depot.max.fetch", 1024);
+      // setup.setLaunchModuleDynamicOption(
+      //   "topology.microbatch.pstate.flush.path.count", 1024);
 
       MicrobatchTopology m = topologies.microbatch("m");
       m.pstate("$$object", PState.mapSchema(Long.class, Object.class));
@@ -376,7 +344,8 @@ public class LoadTest {
           .localSelect("$$loadData", Path.stay()).out("*loadData")
           .macro(extractJavaFields("*loadData",
                                    "*numProcessed",
-                                   "*processingStart", "*processingEnd"))
+                                   "*processingStart",
+                                   "*processingEnd"))
           .each(LoadData::isAllProcessed, "*loadData").out("*allProcessed")
           .keepTrue(new Expr(Ops.GREATER_THAN, "*processingStart", 0L))
           .originPartition()
@@ -388,10 +357,13 @@ public class LoadTest {
                 "*totalProcessed",
                 "*minStart",
                 "*maxEnd",
-                "*allAllProcessed").out("*finalLoadData");
+                new Expr(Ops.AND,
+                         "*allAllProcessed",
+                         new Expr(Ops.IS_POSITIVE, "*totalProcessed")))
+                .out("*finalLoadData");
 
       topologies.query("resetData").out("*out")
-          .globalPartition()
+          .allPartition()
           .depotPartitionAppend("*statsDepot", "reset")
           .each(Ops.IDENTITY, "reset").out("*reset")
           .originPartition()
@@ -450,7 +422,10 @@ public class LoadTest {
 
       seed = (new Random()).nextLong();
 
-      setup.declareObject("*loader", new RandomObjectGenerator(bounds));
+        // N 2node cluster 2000 gives 85% load
+      int numNodes = 1;
+      setup.declareObject("*loader",
+                          new RandomObjectGenerator(bounds, numNodes * 2048));
       setup.clusterDepot("*depot2", SpatialModule.class.getName(), "*depot");
       setup.clusterQuery("*loadDataQuery", SpatialModule.class.getName(), "loadData");
       setup.clusterQuery("*resetDataQuery", SpatialModule.class.getName(), "resetData");
@@ -509,7 +484,9 @@ public class LoadTest {
                     Block
                     .each(Iterator<List<LoadDataResult>>::next, "*iter").out("*addObject")
                     .hashPartition("*depot2", "*addObject")
-                    .depotPartitionAppend("*depot2", "*addObject")
+                    .depotPartitionAppend("*depot2",
+                                          "*addObject",
+                                          AckLevel.NONE)
                     .continueLoop("*iter"))))
               .each(Ops.LOG_DEBUG, LOGGER, "LOAD DATA DONE"),
 
@@ -517,12 +494,14 @@ public class LoadTest {
                 new Expr(Ops.EQUAL,
                          "*state",
                          LoadTestStateMachine.LoadTestState.ENABLE_MB))
-              .each(Ops.LOG_DEBUG, LOGGER, "TIME_PROCESSING")
+              .each(Ops.LOG_DEBUG, LOGGER, "ENABLE_MB")
               .ifTrue(new Expr(Module::isNotEnabled),
                 Block
                 .each(Module::setTopologyActive, spatialModuleName, "m", true)
-                .each(Module::setEnabled, true)
-                .invokeQuery("*resetDataQuery").out("*xxx"))
+                .each(Module::setEnabled, true))
+              .each(Loader::getTotal, "*loader").out("*totalAppends")
+              .each(Ops.LOG_DEBUG, LOGGER, "Total appends: {}", "*totalAppends")
+
               // .globalPartition()
               // .localTransform("$$loadData", Path.term(LoadData::reset))
               // .each(Ops.IDENTITY,
@@ -530,6 +509,24 @@ public class LoadTest {
               // .out("*nextState")
               // .macro(statemachine.stateMachine.transitionTo("*nextState"))
               ,
+
+              Case.create(
+                new Expr(
+                  Ops.EQUAL,
+                  "*state",
+                  LoadTestStateMachine.LoadTestState.INITIAL_PROCESSING))
+              .each(Ops.LOG_DEBUG, LOGGER, "INITIAL_PROCESSING"),
+
+              Case.create(
+                new Expr(Ops.EQUAL,
+                         "*state",
+                         LoadTestStateMachine.LoadTestState.RESET_STATS))
+              .each(Ops.LOG_DEBUG, LOGGER, "RESET_STATES")
+              .invokeQuery("*resetDataQuery").out("*xxx")
+              .each(Ops.IDENTITY,
+                    LoadTestStateMachine.LoadTestState.TIME_PROCESSING)
+              .out("*nextState")
+              .macro(statemachine.stateMachine.transitionTo("*nextState")),
 
               Case.create(
                 new Expr(Ops.EQUAL,
@@ -543,6 +540,7 @@ public class LoadTest {
                                                  "*minStart",
                                                  "*maxEnd",
                                                  "*allProcessed")
+              .each(Ops.LOG_DEBUG, LOGGER, "allProcessed: {}", "*allProcessed")
               .ifTrue(
                 "*allProcessed",
                 Block

@@ -877,6 +877,7 @@ public class RTree implements RamaSerializable {
     return Block
         .each(Ops.LOG_TRACE, LOGGER, "buildModTable")
         .allPartition()
+
         // TODO delete these
         .each(RTree::emptySortedMap).out("*emptyMap")
         .localTransform(modTableVar, Path.termVal("*emptyMap"))
@@ -907,13 +908,9 @@ public class RTree implements RamaSerializable {
         .each(ModTableKey::mkLeafKey,
               new Expr(Node::nodeId, "*chosenNode")).out("*tmpKey")
 
-        // TODO this is a single local transform
-        .localSelect(modTableVar,
-                     // nullToList
-                     Path.key("*tmpKey").nullToVal(Vector.empty())
-                     ).out("*current")
-        .each(Vector::conj, "*current", "*modification").out("*newValue")
-        .localTransform(modTableVar, Path.key("*tmpKey").termVal("*newValue"))
+        .localTransform(
+          modTableVar,
+          Path.key("*tmpKey").nullToList().afterElem().termVal("*modification"))
         ;
   }
 
@@ -949,20 +946,23 @@ public class RTree implements RamaSerializable {
   private Block lookupNode(final String nodeIdVar,
                            final String nodeVar) {
 
-    final String tmpNodeVar = Helpers.genVar("node");
+    // final String tmpNodeVar = Helpers.genVar("node");
     return Block
-        .macro(readNode(nodeIdVar, tmpNodeVar))
+        .macro(readNode(nodeIdVar, nodeVar))
+        .macro(RamaAssert.assertMacro(
+          new Expr(Ops.IS_NOT_NULL, nodeVar),
+          "node exists"))
 
-        .ifTrue(
-          new Expr(Ops.IS_NOT_NULL, tmpNodeVar),
-          Block.each(Ops.IDENTITY, tmpNodeVar).out(nodeVar),
-          Block
-          .macro(RamaAssert.assertMacro(new Expr(Ops.IDENTITY, false),
-                                        "shouldnt get here"))
-          .each(Ops.LOG_DEBUG, LOGGER, "new root node {}", nodeIdVar)
-          .hashPartition(nodeIdVar)
-          .localTransform("$$rootUpdate", Path.termVal(nodeIdVar))
-          .each(RTree::createRootNode, nodeIdVar).out(nodeVar))
+        // .ifTrue(
+        //   new Expr(Ops.IS_NOT_NULL, tmpNodeVar),
+        //   Block.each(Ops.IDENTITY, tmpNodeVar).out(nodeVar),
+        //   Block
+        //   .macro(RamaAssert.assertMacro(new Expr(Ops.IDENTITY, false),
+        //                                 "shouldnt get here"))
+        //   .each(Ops.LOG_DEBUG, LOGGER, "new root node {}", nodeIdVar)
+        //   .hashPartition(nodeIdVar)
+        //   .localTransform("$$rootUpdate", Path.termVal(nodeIdVar))
+        //   .each(RTree::createRootNode, nodeIdVar).out(nodeVar))
 
           // .each(Ops.LOG_TRACE, LOGGER,
           //       new Expr(Ops.TO_STRING,

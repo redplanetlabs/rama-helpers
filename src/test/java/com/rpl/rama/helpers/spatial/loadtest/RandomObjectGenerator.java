@@ -11,9 +11,17 @@ import com.rpl.rama.helpers.spatial.MBR;
 
 public class RandomObjectGenerator implements Loader, RamaSerializable {
   final MBR bounds;
+  final int batchSize;
+  int total;
 
-  public RandomObjectGenerator(MBR bounds) {
+  public RandomObjectGenerator(MBR bounds, int batchSize) {
     this.bounds = bounds;
+    this.batchSize = batchSize;
+    this.total = 0;
+  }
+
+  public int getTotal() {
+    return total;
   }
 
   public static class RandomObject {
@@ -46,13 +54,14 @@ public class RandomObjectGenerator implements Loader, RamaSerializable {
         objects.add(new RandomObject(objectBounds, i));
       }
     }
+    total = total + numObjects;
     return objects;
   }
 
   public LoadDataResult loadData(Random random) {
     return new LoadDataResult(
       false,
-      generateObjects(random, 100)
+      generateObjects(random, batchSize)
       .stream()
       .map(
         (RandomObject ro) -> { return new AddObject(ro.bounds, ro.id); })
