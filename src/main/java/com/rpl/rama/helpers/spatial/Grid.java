@@ -44,6 +44,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class Grid implements RamaSerializable {
+  private static final Logger LOGGER = LoggerFactory.getLogger(Grid.class);
 
   public static class Node implements RamaSerializable {
     PersistentVector children;
@@ -68,7 +69,6 @@ public class Grid implements RamaSerializable {
       }
       return this;
     }
-
   }
 
   /** The overall bounds of the grid. */
@@ -80,11 +80,15 @@ public class Grid implements RamaSerializable {
   /** The total number of regions in the grid. */
   private long numRegions;
 
-  public Grid(MBR bounds, int[] numExtents) {
+  private final String nodesPstate;
+
+  public Grid(MBR bounds, int[] numExtents, final String gridName) {
     assert bounds.dimensions() == numExtents.length;
     this.bounds = bounds;
     this.numExtents = numExtents;
     this.numRegions = totalRegions(numExtents);
+
+    this.nodesPstate = "$$" + gridName + "__nodes";
   }
 
   public static long totalRegions(int[] numExtents) {
@@ -139,13 +143,8 @@ public class Grid implements RamaSerializable {
     return Block
         .each(Ops.LOG_TRACE, LOGGER, "buildModTable")
         .each(Ops.MODULE_INSTANCE_INFO).out("*mii")
-        .each(ModuleInstanceInfo::getNumTasks, "*mii").out("!numPartitions")
+        .each(ModuleInstanceInfo::getNumTasks, "*mii").out("*numPartitions")
         .allPartition()
-
-        // TODO delete these
-        .each(RTree::emptySortedMap).out("*emptyMap")
-        .localTransform(modTableVar, Path.termVal("*emptyMap"))
-
         .localSelect(modTableVar, Path.all()).out("*data")
         // .each(Ops.LOG_TRACE, LOGGER,
         //       new Expr(Ops.TO_STRING, "DATA ", "*data"))
@@ -164,8 +163,8 @@ public class Grid implements RamaSerializable {
         .each(Grid::boundsIndex, this, "*bounds").out("*index")
         .each(Grid::boundsPartition,
               "*index",
-              "!numPartitions").out("*partition")
-        .directHash("*partition")
+              "*numPartitions").out("*partition")
+        .directPartition("*partition")
         .localTransform(
           modTableVar,
           Path.key("*index").nullToList().afterElem().termVal("*modification"))
@@ -195,19 +194,16 @@ public class Grid implements RamaSerializable {
           // TODO move this destructuring into updateNode
           .each(Ops.FIRST, "*nodeOps").out("*index")
           .each(Ops.LAST, "*nodeOps").out("*nodeOpsList")
-          .ifTrue(
-            new Expr(Ops.IS_NOT_NULL, "*opNodeId"),
-            Block
-            .localSelect(nodesPstate, Path.key("*index")).out(nodeVar)
-            .macro(updateNode("*index", nodeVar, "*nodeOpsList")))
+          .localSelect(nodesPstate, Path.key("*index")).out("*node")
+          .macro(updateNode("*index", "*node", "*nodeOpsList"))
           .each(Ops.LOG_DEBUG, LOGGER, "handleModifications done"));
   }
 
-  public Block updateNode(String indexVar,
-                          Node node,
-                          List<ModificationCollector.AddObject> ops) {
+  public Block updateNode(final String indexVar,
+                          final String nodeVar,
+                          final String opsVar) {
     return Block
-        .each(Node::performOps, node, ops)
-        .localTransform(nodesPstate, Path.key(indexVar).termVal(node));
+        .each(Node::performOps, nodeVar, opsVar)
+        .localTransform(nodesPstate, Path.key(indexVar).termVal(nodeVar));
   }
 }
