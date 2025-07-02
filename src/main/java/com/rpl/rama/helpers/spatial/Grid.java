@@ -123,6 +123,8 @@ public class Grid implements RamaSerializable {
   }
 
   void declarePStates(final MicrobatchTopology topology) {
+    topology.pstate(nodesPstate,
+                    PState.mapSchema(Long.class, Object.class));
   }
 
   void declareQueries(final Topologies topology) {
