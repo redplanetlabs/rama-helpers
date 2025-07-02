@@ -10,7 +10,7 @@ import clojure.lang.Var;
 import com.rpl.rama.ops.RamaFunction1;
 
 /** Helpers for working with clojure PersistentVector */
-class Vector {
+public class Vector {
 
   public static PersistentVector empty() {
     return PersistentVector.EMPTY;

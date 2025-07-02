@@ -3,7 +3,7 @@ package com.rpl.rama.helpers.spatial;
 import com.rpl.rama.RamaSerializable;
 import com.rpl.rama.ops.OutputCollector;
 
-public class RTreeCollector {
+public class ModificationCollector {
 
   public static class AddObject implements RamaSerializable {
     public final MBR bounds;
@@ -26,7 +26,7 @@ public class RTreeCollector {
 
   private final OutputCollector collector;
 
-  public RTreeCollector(OutputCollector collector) {
+  public ModificationCollector(OutputCollector collector) {
     this.collector = collector;
   }
 

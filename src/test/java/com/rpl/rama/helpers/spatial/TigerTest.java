@@ -107,7 +107,7 @@ public class TigerTest {
             .macro(
               rTree.handleModifications(
                 "$$objects",
-                (List<Object> data, RTreeCollector collector) -> {
+                (List<Object> data, ModificationCollector collector) -> {
                   collector.addObject(
                     (MBR)data.get(0),
                     (Long)data.get(1));}));

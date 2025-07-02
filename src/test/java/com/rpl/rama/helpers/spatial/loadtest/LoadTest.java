@@ -34,7 +34,8 @@ import com.rpl.rama.helpers.ModuleUniqueIdPState;
 import com.rpl.rama.helpers.spatial.AddObject;
 import com.rpl.rama.helpers.spatial.MBR;
 import com.rpl.rama.helpers.spatial.RTree;
-import com.rpl.rama.helpers.spatial.RTreeCollector;
+import com.rpl.rama.helpers.spatial.ModificationCollector;
+import com.rpl.rama.helpers.spatial.Vector;
 import com.rpl.rama.helpers.statemachine.core.StateMachineState;
 import com.rpl.rama.integration.TaskGlobalContext;
 import com.rpl.rama.integration.TaskGlobalObject;
@@ -58,6 +59,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import clojure.lang.Counted;
+import clojure.lang.PersistentVector;
 
 public class LoadTest {
 
@@ -234,8 +236,9 @@ public class LoadTest {
       setup.declareDepot("*depot", Depot.random());
       setup.declareDepot("*statsDepot", Depot.random());
 
-      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 4096);
-      setup.setLaunchModuleDynamicOption("depot.max.fetch", 1024);
+      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 1000);
+      // setup.setLaunchModuleDynamicOption("depot.max.fetch", 1024);
+
       // setup.setLaunchModuleDynamicOption(
       //   "topology.microbatch.pstate.flush.path.count", 1024);
 
@@ -266,7 +269,8 @@ public class LoadTest {
           .batchBlock(
             Block
             // .each(Ops.LOG_TRACE, LOGGER, "New Microbatch")
-            .explodeMicrobatch("*microbatch").out("*v")
+            .explodeMicrobatch("*microbatch").out("*batch")
+            .each(Ops.EXPLODE, "*batch").out("*v")
             .macro(idGenerator.genId("*objectId"))
             .macro(extractJavaFields("*v", "*bounds", "*object"))
             // .each(Ops.LOG_TRACE,
@@ -313,7 +317,7 @@ public class LoadTest {
             .macro(
               rTree.handleModifications(
                 "$$objects",
-                (List<Object> data, RTreeCollector collector) -> {
+                (List<Object> data, ModificationCollector collector) -> {
                   collector.addObject(
                     (MBR) data.get(0),
                     (Long) data.get(1));
@@ -410,6 +414,19 @@ public class LoadTest {
       return !enabled;
     }
 
+    static PersistentVector nextBatch(Iterator<List<LoadDataResult>> iter)
+    {
+      PersistentVector batch = Vector.empty();
+      for (int i = 0; i < 128; i=i+1) {
+        if (iter.hasNext()) {
+          batch = Vector.conj(batch, iter.next());
+        } else {
+          break;
+        }
+      }
+      return batch;
+    }
+
     @Override
     public void define(Setup setup, Topologies topologies) {
       statemachine.stateMachine.define(
@@ -425,7 +442,7 @@ public class LoadTest {
         // N 2node cluster 2000 gives 85% load
       int numNodes = 1;
       setup.declareObject("*loader",
-                          new RandomObjectGenerator(bounds, numNodes * 2048));
+                          new RandomObjectGenerator(bounds, 40 * 2048));
       setup.clusterDepot("*depot2", SpatialModule.class.getName(), "*depot");
       setup.clusterQuery("*loadDataQuery", SpatialModule.class.getName(), "loadData");
       setup.clusterQuery("*resetDataQuery", SpatialModule.class.getName(), "resetData");
@@ -473,21 +490,31 @@ public class LoadTest {
                 "*done",
                 Block
                 .each(Ops.CURRENT_TASK_ID).out("*taskId")
-                .each(Ops.IDENTITY, LoadTestStateMachine.LoadTestSignal.LOAD_COMPLETE).out("*signal")
+                .each(Ops.IDENTITY,
+                      LoadTestStateMachine.LoadTestSignal.LOAD_COMPLETE)
+                .out("*signal")
                 .macro(statemachine.stateMachine.setSignal("*taskId", "*signal")),
                 Block
                 .loopWithVars(
-                  LoopVars.var("*iter", new Expr(List<LoadDataResult>::iterator, "*addObjects")),
+                  LoopVars
+                  .var("*iter", new Expr(List<LoadDataResult>::iterator, "*addObjects"))
+                  // .var("*ackLevel", new Expr(Ops.IDENTITY, AckLevel.ACK))
+                  ,
                   Block
                   .ifTrue(
                     new Expr(Iterator<List<LoadDataResult>>::hasNext, "*iter"),
                     Block
-                    .each(Iterator<List<LoadDataResult>>::next, "*iter").out("*addObject")
-                    .hashPartition("*depot2", "*addObject")
-                    .depotPartitionAppend("*depot2",
-                                          "*addObject",
-                                          AckLevel.NONE)
-                    .continueLoop("*iter"))))
+                    .each(Module::nextBatch, "*iter").out("*batch")
+                    // need to has to use the mirrored partition
+                    .hashPartition("*depot2", "*batch")
+                    .depotPartitionAppend("*depot2", "*batch", AckLevel.NONE)
+                    // .ifTrue(
+                    //   new Expr(Ops.EQUAL, "*ackLevel", AckLevel.ACK),
+                    //   Block.depotPartitionAppend("*depot2", "*batch", AckLevel.ACK),
+                    //   Block.depotPartitionAppend("*depot2", "*batch", AckLevel.NONE))
+                    .continueLoop("*iter"// ,
+                                  // new Expr(Ops.IDENTITY, AckLevel.NONE)
+                                  ))))
               .each(Ops.LOG_DEBUG, LOGGER, "LOAD DATA DONE"),
 
               Case.create(
@@ -600,7 +627,7 @@ public class LoadTest {
       };
 
       final RamaModule module = new Module();
-      cluster.launchModule(module, new LaunchConfig(2, 2));
+      cluster.launchModule(module, new LaunchConfig(4, 1));
       LOGGER.error("Launched perf test module");
       final PState smState =
         cluster.clusterPState(Module.class.getName(), "$$sm");

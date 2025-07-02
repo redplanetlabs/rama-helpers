@@ -24,7 +24,7 @@ public class LoadTestStateMachine implements RamaSerializable {
         .done()
 
         .state(LoadTestState.LOAD_DATA)
-        .afterDuration(Duration.ofSeconds(3*60), LoadTestState.ENABLE_MB)
+        .afterDuration(Duration.ofSeconds(20*60), LoadTestState.ENABLE_MB)
         // .onAllSignalled(LoadTestSignal.LOAD_COMPLETE,
         //                 Duration.ofSeconds(3),
         //                 LoadTestState.ENABLE_MB )
@@ -35,7 +35,7 @@ public class LoadTestStateMachine implements RamaSerializable {
         .done()
 
         .state(LoadTestState.INITIAL_PROCESSING)
-        .afterDuration(Duration.ofSeconds(2*60), LoadTestState.RESET_STATS)
+        .afterDuration(Duration.ofSeconds(10*60), LoadTestState.RESET_STATS)
         .done()
 
         .state(LoadTestState.RESET_STATS)

@@ -320,12 +320,12 @@ public class RTree implements RamaSerializable {
 
   private static PersistentVector allChildren(
     final Node currentNode,
-    final List<RTreeCollector.AddObject> nodeOps) {
+    final List<ModificationCollector.AddObject> nodeOps) {
     return
         nodeOps
         .stream()
         .reduce(currentNode.children,
-                (PersistentVector childVec, RTreeCollector.AddObject op) ->
+                (PersistentVector childVec, ModificationCollector.AddObject op) ->
                 Vector.conj(childVec, new Child(op.bounds, op.objectId)),
                 (PersistentVector c1, PersistentVector c2) ->
                 Vector.into(c1, c2));
@@ -511,7 +511,7 @@ public class RTree implements RamaSerializable {
         .each(Node::unionBounds, "*sibling").out("*newBounds")
         .each(Ops.LOG_DEBUG, LOGGER, "FFF")
         .ifTrue("*needsOps",
-                Block.each(RTreeCollector.AddObject::mkAddObject,
+                Block.each(ModificationCollector.AddObject::mkAddObject,
                            "*newBounds",
                            "*newId").out(parentOpVar),
                 Block.each(Ops.IDENTITY, null).out(parentOpVar))
@@ -846,8 +846,8 @@ public class RTree implements RamaSerializable {
   }
 
   /** Functional interface for expected dataConverter signature */
-  public interface RTreeConvertorFunction<T>  extends RamaSerializable {
-    public void invoke(T data, RTreeCollector collector);
+  public interface ModificationConvertorFunction<T>  extends RamaSerializable {
+    public void invoke(T data, ModificationCollector collector);
   }
 
   /* Explode the contents of var.
@@ -871,7 +871,7 @@ public class RTree implements RamaSerializable {
 
   private <T> Block buildModTable(
     final String userModTableVar,
-    final RTreeConvertorFunction<T> dataConvertor,
+    final ModificationConvertorFunction<T> dataConvertor,
     final String modTableVar,
     final String rootUpdateVar) {
     return Block
@@ -886,7 +886,7 @@ public class RTree implements RamaSerializable {
         // .each(Ops.LOG_TRACE, LOGGER,
         //       new Expr(Ops.TO_STRING, "DATA ", "*data"))
         .each((T data, OutputCollector collector) -> {
-            RTreeCollector c = new RTreeCollector(collector);
+            ModificationCollector c = new ModificationCollector(collector);
             dataConvertor.invoke(data, c);
           },
           "*data").out("*modification")
@@ -1091,7 +1091,7 @@ public class RTree implements RamaSerializable {
 
   public <T> Block handleModifications(
     final String userModTableVar,
-    final RTreeConvertorFunction<T> dataConvertor) {
+    final ModificationConvertorFunction<T> dataConvertor) {
 
     return Block
         .each(Ops.LOG_DEBUG, LOGGER, "handleModifications")
@@ -1117,16 +1117,17 @@ public class RTree implements RamaSerializable {
                                               "$$rootUpdate")))
         .each(Ops.LOG_DEBUG, LOGGER, "buildModTable finished")
         .each(CURRENT_EVENT_NUM).out("*afterBuildEvent")
-        .localSelect("$$modTable",
-                     Path.stay()
-                     .view(Counted::count)
-                     ).out("*numChanges")
+        // .localSelect("$$modTable",
+        //              Path.stay()
+        //              .view(Counted::count)
+        //              ).out("*numChanges")
+        .macro(hasNoMoreModsPred("$$modTable", "*hasNoOps"))
         // .each(Ops.LOG_ERROR, LOGGER,
         //               new Expr(Ops.TO_STRING, "INITIAL TABLE: ", "*wholeTable"))
         // .each(Ops.LOG_DEBUG, LOGGER,
         //       new Expr(Ops.TO_STRING, "numChanges: ", "*numChanges"))
         .ifTrue(
-          new Expr(Ops.IS_POSITIVE, "*numChanges"),
+          new Expr(Ops.NOT, "*hasNoOps"),
           // Perform the insertion, looping to insert changes into parent nodes
           Block
           .loop(
@@ -1277,7 +1278,7 @@ public class RTree implements RamaSerializable {
           LoopVars
           .var("*siblings", "*sortedSiblings")
           .var("*ops",
-               new Expr(RTree::<RTreeCollector.AddObject>emptyList)),
+               new Expr(RTree::<ModificationCollector.AddObject>emptyList)),
           Block
           .ifTrue(
             new Expr(List<Node>::isEmpty, "*siblings"),
@@ -1286,10 +1287,10 @@ public class RTree implements RamaSerializable {
             .each(RTree::firstList, "*siblings").out("*newSibling")
             .each(Node::bounds, "*newSibling").out("*newBounds")
             .each(Node::nodeId, "*newSibling").out("*newId")
-            .each(RTreeCollector.AddObject::mkAddObject,
+            .each(ModificationCollector.AddObject::mkAddObject,
                   "*newBounds",
                   "*newId").out("*newOp")
-            .each(RTree::<RTreeCollector.AddObject>conjList,
+            .each(RTree::<ModificationCollector.AddObject>conjList,
                   "*ops",
                   "*newOp").out("*newOps1")
             .each(RTree::restList, "*siblings").out("*remaining")

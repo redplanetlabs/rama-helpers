@@ -73,7 +73,7 @@ public class RTreeUnitTest {
   //   VarRef<List<Node>> newSiblings = new VarRef<>("*newSiblings");
 
   //   // Create a root node with one child
-  //   ops = ops.cons(new RTreeCollector.AddObject(oneBounds, Long.valueOf(1)));
+  //   ops = ops.cons(new ModificationCollector.AddObject(oneBounds, Long.valueOf(1)));
   //   {
   //     Block
   //         .each(Ops.IDENTITY, rootNode).out(node.name)
@@ -92,7 +92,7 @@ public class RTreeUnitTest {
   //   }
 
   //   // Create a full root node
-  //   ops=ops.cons(new RTreeCollector.AddObject(twoBounds, Long.valueOf(2)));
+  //   ops=ops.cons(new ModificationCollector.AddObject(twoBounds, Long.valueOf(2)));
   //   assertEquals(2, ops.size());
   //   {
   //     Block
@@ -114,7 +114,7 @@ public class RTreeUnitTest {
   //   }
 
   //   // Create an over full root node, requiring a split
-  //   ops = ops.cons(new RTreeCollector.AddObject(oneBounds, Long.valueOf(3)));
+  //   ops = ops.cons(new ModificationCollector.AddObject(oneBounds, Long.valueOf(3)));
   //   assertEquals(3, ops.size());
   //   {
   //     Block
@@ -138,8 +138,8 @@ public class RTreeUnitTest {
   //   }
 
   //   // Create an over full root node, requiring two new nodes
-  //   ops = ops.cons(new RTreeCollector.AddObject(twoBounds, Long.valueOf(4)));
-  //   ops = ops.cons(new RTreeCollector.AddObject(twoBounds, Long.valueOf(5)));
+  //   ops = ops.cons(new ModificationCollector.AddObject(twoBounds, Long.valueOf(4)));
+  //   ops = ops.cons(new ModificationCollector.AddObject(twoBounds, Long.valueOf(5)));
   //   assertEquals(5, ops.size());
   //   {
   //     Block

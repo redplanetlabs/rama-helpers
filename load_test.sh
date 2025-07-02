@@ -41,6 +41,10 @@ wait_for_module_running() {
 }
 
 
+${RAMA} moduleStatus \
+	--useInternalHostnames \
+	"rpl.rama.distributed.monitoring.module/Monitoring" \
+    | jq -e '.moduleState != "NOT_ALIVE"' > /dev/null ||
 ${RAMA} deploy \
 	--action launch --systemModule monitoring \
 	--workers 1 --tasks 4 --threads 4 --replicationFactor 1 \
@@ -50,22 +54,32 @@ wait_for_module_running \
     "rpl.rama.distributed.monitoring.module/Monitoring"
 
 
+${RAMA} moduleStatus \
+	--useInternalHostnames \
+	"com.rpl.rama.helpers.spatial.loadtest.LoadTest\$SpatialModule" \
+    | jq -e '.moduleState != "NOT_ALIVE"' > /dev/null ||
 ${RAMA} deploy \
 	--action launch \
 	--jar target/rama-helpers-fat-jar-with-tests.jar \
 	--module "com.rpl.rama.helpers.spatial.loadtest.LoadTest\$SpatialModule" \
 	--workers ${NUM} --tasks ${NUMTASKS} --threads ${NUMTASKS} \
+	--configOverrides load_test_config.yaml \
 	--useInternalHostnames
 
 wait_for_module_running \
     "com.rpl.rama.helpers.spatial.loadtest.LoadTest\$SpatialModule"
 
-echo -n "Press Enter to deploy load test module: "
-read -r
+echo "Deploying test module..."
 
 ${RAMA} deploy \
 	--action launch \
 	--jar target/rama-helpers-fat-jar-with-tests.jar \
 	--module "com.rpl.rama.helpers.spatial.loadtest.LoadTest\$Module" \
-	--workers 1 --tasks 4 --threads 4 \
+	--workers 1 --tasks ${NUM}  --threads ${NUM} \
+	--configOverrides load_test_config.yaml \
 	--useInternalHostnames
+
+wait_for_module_running \
+    "com.rpl.rama.helpers.spatial.loadtest.LoadTest\$Module"
+
+say "Load test running"
