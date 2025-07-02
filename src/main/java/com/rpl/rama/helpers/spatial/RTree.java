@@ -1102,13 +1102,7 @@ public class RTree implements RamaSerializable {
         .each(Ops.LOG_DEBUG, LOGGER, "ensureRootNode done")
 
         .each(CURRENT_EVENT_NUM).out("*startEvent")
-        // materialize the temporary pstate, so we can explicitly control its
-        // type
         // .each(Ops.LOG_DEBUG, LOGGER, "handleModifications before materialize")
-        // .globalPartition()
-        .macro(RamaAssert.assertMacro(
-          new Expr(Ops.EQUAL, 0, new Expr(Ops.CURRENT_TASK_ID)),
-          "DD"))
 
         // .each(Ops.LOG_DEBUG, LOGGER, "handleModifications before build")
         .batchBlock(Block.macro(buildModTable(userModTableVar,

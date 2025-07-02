@@ -44,7 +44,79 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class Grid implements RamaSerializable {
-  /** Declare all the pobjects required for the Grid. */
+
+  public static class Node implements RamaSerializable {
+    PersistentVector children;
+
+    public Node() {
+      this.children = Vector.empty();
+    }
+
+    public Node add(MBR bounds, long id) {
+      children = children.cons(new Child(bounds, id));
+      return this;
+    }
+
+    public Node addChild(Child child) {
+      children = children.cons(child);
+      return this;
+    }
+
+    public Node performOps(List<ModificationCollector.AddObject> ops) {
+      for (ModificationCollector.AddObject op : ops) {
+        add(op.bounds, op.objectId);
+      }
+      return this;
+    }
+
+  }
+
+  /** The overall bounds of the grid. */
+  public MBR bounds;
+
+  /** The number of extents for each dimension of bounds. */
+  public int[] numExtents;
+
+  /** The total number of regions in the grid. */
+  private long numRegions;
+
+  public Grid(MBR bounds, int[] numExtents) {
+    assert bounds.dimensions() == numExtents.length;
+    this.bounds = bounds;
+    this.numExtents = numExtents;
+    this.numRegions = totalRegions(numExtents);
+  }
+
+  public static long totalRegions(int[] numExtents) {
+    assert numExtents != null;
+    assert numExtents.length > 0;
+
+    long product = 1;
+    for (int extent : numExtents) {
+        product *= extent;
+    }
+    return product;
+  }
+
+  /** Return the index for the center-point of the given bounds. */
+  private long boundsIndex(final MBR bounds) {
+    long factor = 1;
+    long result = 0;
+    for (int dim = 0; dim < bounds.dimensions(); dim = dim + 1) {
+      long i = Math.floorDiv(
+        (long)(bounds.getCenterPoint(dim) - this.bounds.getMin(dim)),
+        (long) bounds.getExtent(dim));
+      result = result + i * factor;
+      factor = factor * this.numExtents[dim];
+    }
+    return result;
+  }
+
+  /** Return the partition for the center-point of the given bounds. */
+  private static long boundsPartition(final long boundsIndex,
+                                      final long numPartitions) {
+    return boundsIndex % numPartitions;
+  }
 
   void declarePStates(final MicrobatchTopology topology) {
   }
@@ -52,16 +124,90 @@ public class Grid implements RamaSerializable {
   void declareQueries(final Topologies topology) {
   }
 
+  /** Declare all the pobjects required for the Grid. */
   public void declare(final Topologies topologies,
                       final MicrobatchTopology topology) {
     declarePStates(topology);
     declareQueries(topologies);
   }
 
+  private <T> Block buildModTable(
+    final String userModTableVar,
+    final ModificationConvertorFunction<T> dataConvertor,
+    final String modTableVar,
+    final String rootUpdateVar) {
+    return Block
+        .each(Ops.LOG_TRACE, LOGGER, "buildModTable")
+        .each(Ops.MODULE_INSTANCE_INFO).out("*mii")
+        .each(ModuleInstanceInfo::getNumTasks, "*mii").out("!numPartitions")
+        .allPartition()
+
+        // TODO delete these
+        .each(RTree::emptySortedMap).out("*emptyMap")
+        .localTransform(modTableVar, Path.termVal("*emptyMap"))
+
+        .localSelect(modTableVar, Path.all()).out("*data")
+        // .each(Ops.LOG_TRACE, LOGGER,
+        //       new Expr(Ops.TO_STRING, "DATA ", "*data"))
+        .each((T data, OutputCollector collector) -> {
+            ModificationCollector c = new ModificationCollector(collector);
+            dataConvertor.invoke(data, c);
+          },
+          "*data").out("*modification")
+
+        .each(Ops.LOG_TRACE, LOGGER, "Modification")
+        // .each(Ops.LOG_TRACE, LOGGER,
+        //       new Expr(Ops.TO_STRING, "Modification ", "*modification"))
+
+        // TODO extractJavaFields is not very efficient
+        .macro(extractJavaFields("*modification", "*bounds", "*objectId"))
+        .each(Grid::boundsIndex, this, "*bounds").out("*index")
+        .each(Grid::boundsPartition,
+              "*index",
+              "!numPartitions").out("*partition")
+        .directHash("*partition")
+        .localTransform(
+          modTableVar,
+          Path.key("*index").nullToList().afterElem().termVal("*modification"))
+        ;
+  }
+
   public <T> Block handleModifications(
     final String userModTableVar,
     final ModificationConvertorFunction<T> dataConvertor) {
 
-    return Block.create();
+    return Block
+        .each(Ops.LOG_DEBUG, LOGGER, "handleModifications")
+        .batchBlock(Block.keepTrue(false).materialize().out("$$rootUpdate"))
+        .batchBlock(Block.keepTrue(false).materialize().out("$$modTable"))
+        .batchBlock(Block.macro(buildModTable(userModTableVar,
+                                              dataConvertor,
+                                              "$$modTable",
+                                              "$$rootUpdate")))
+        .each(Ops.LOG_DEBUG, LOGGER, "buildModTable finished")
+
+        .batchBlock(
+          Block
+          .allPartition()
+          .each(Ops.LOG_TRACE, LOGGER, "Loop body for task")
+          .localSelect("$$modTable", Path.all()).out("*nodeOps")
+          .each(Ops.LOG_TRACE, LOGGER, "Loop body AA")
+          // TODO move this destructuring into updateNode
+          .each(Ops.FIRST, "*nodeOps").out("*index")
+          .each(Ops.LAST, "*nodeOps").out("*nodeOpsList")
+          .ifTrue(
+            new Expr(Ops.IS_NOT_NULL, "*opNodeId"),
+            Block
+            .localSelect(nodesPstate, Path.key("*index")).out(nodeVar)
+            .macro(updateNode("*index", nodeVar, "*nodeOpsList")))
+          .each(Ops.LOG_DEBUG, LOGGER, "handleModifications done"));
+  }
+
+  public Block updateNode(String indexVar,
+                          Node node,
+                          List<ModificationCollector.AddObject> ops) {
+    return Block
+        .each(Node::performOps, node, ops)
+        .localTransform(nodesPstate, Path.key(indexVar).termVal(node));
   }
 }

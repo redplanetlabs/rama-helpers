@@ -625,18 +625,23 @@ public class MBR implements RamaSerializable {
     int dimensions = mins.length;
     double[] center = new double[dimensions];
     for (int i = 0; i < dimensions; i++) {
-      if (Double.isInfinite(mins[i]) && Double.isInfinite(maxs[i])) {
-        center[i] = 0.0; // Arbitrary center for infinite dimension
-      } else if (Double.isInfinite(mins[i])) {
-        center[i] = maxs[i] - 1.0; // Arbitrary point before max
-      } else if (Double.isInfinite(maxs[i])) {
-        center[i] = mins[i] + 1.0; // Arbitrary point after min
-      } else {
-        center[i] = (mins[i] + maxs[i]) / 2.0; // Regular center
-      }
+      center[i] = getCenterPoint(i);
     }
 
     return center;
+  }
+
+  public double getCenterPoint(int dimension) {
+    if (Double.isInfinite(mins[dimension])
+        && Double.isInfinite(maxs[dimension])) {
+      return 0.0; // Arbitrary center for infinite dimension
+    } else if (Double.isInfinite(mins[dimension])) {
+        return  maxs[dimension] - 1.0; // Arbitrary point before max
+    } else if (Double.isInfinite(maxs[dimension])) {
+        return mins[dimension] + 1.0; // Arbitrary point after min
+    } else {
+      return (mins[dimension] + maxs[dimension]) / 2.0; // Regular center
+    }
   }
 
   public MBR randomSubBounds(final Random random) {
