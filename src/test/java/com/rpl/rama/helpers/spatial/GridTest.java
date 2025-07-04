@@ -72,7 +72,7 @@ public class GridTest {
       final int minChildren = 1;
       final int[] extents = {10, 10};
       final MBR bounds = new MBR(new double[] { 0, 0 },
-				 new double[] { 100, 1000});
+                                 new double[] { 100, 1000});
 
       Grid Grid = new Grid(bounds, extents, "test");
       Grid.declare(topologies, m);
@@ -128,7 +128,6 @@ public class GridTest {
 
       final Depot depot = cluster.clusterDepot(Module.class.getName(), "*depot");
       final PState nodes = cluster.clusterPState(Module.class.getName(), "$$test__nodes");
-      final PState root = cluster.clusterPState(Module.class.getName(), "$$test__root");
       final PState object = cluster.clusterPState(Module.class.getName(), "$$object");
       final QueryTopologyClient q = cluster.clusterQuery(Module.class.getName(), "objectsInBounds");
 
@@ -160,12 +159,6 @@ public class GridTest {
         assertNotNull("An object has been recorded", a);
         assertEquals("Object has been recorded correctly", "a", a);
 
-        INode node = root.selectOne(Path.stay());
-        assertNotNull(node);
-        assertTrue(node.isLeaf());
-        assertTrue(node instanceof LeafNode);
-        assertEquals(1, ((Node)node).count());
-
         assertEquals(new ArrayList<>(Arrays.asList(0L)),
                      new ArrayList<>((List<Long>)q.invoke(oneBounds)));
         assertEquals(new ArrayList<>(Arrays.asList(0L)),
@@ -187,11 +180,6 @@ public class GridTest {
         DepotPartitionInfo dpi = depot.getPartitionInfo(0);
         assertEquals(2, dpi.getEndOffset());
 
-        Node node = root.selectOne(Path.stay());
-        assertTrue(node instanceof Node);
-        assertTrue(node.isLeaf());
-        assertEquals(2, node.count());
-
         assertEquals(new ArrayList<>(Arrays.asList(0L, 1L)),
                      new ArrayList<>((List<Long>)q.invoke(oneBounds)));
         assertEquals(new ArrayList<>(Arrays.asList(0L, 1L)),
@@ -210,51 +198,6 @@ public class GridTest {
       {
         DepotPartitionInfo dpi = depot.getPartitionInfo(0);
         assertEquals(3, dpi.getEndOffset());
-
-        final Node rootNode = root.selectOne(Path.stay());
-        final Node childNode0 = nodes.selectOne(Path.key(0L));
-        final Node childNode1 = nodes.selectOne(Path.key(1L));
-
-        System.out.println("Root node after processing " + rootNode);
-        System.out.println("Node 0 after processing " + childNode0);
-        System.out.println("Node 1 after processing " + childNode1);
-
-        assertTrue(rootNode instanceof NonLeafNode);
-        assertFalse(rootNode.isLeaf());
-        assertEquals(Long.valueOf(2), rootNode.nodeId());
-        assertEquals(2, rootNode.parentId());
-        assertEquals(2, rootNode.count());
-        {
-          final Object[] children
-            = ((Collection<Child>)rootNode.children)
-            .stream().map(Child::childId).toArray();
-          assertArrayEquals(new Object[] { 0L, 1L }, children);
-        }
-        assertEquals(allBounds, rootNode.bounds());
-
-        assertEquals(Long.valueOf(0), childNode0.nodeId());
-        assertEquals(2, childNode0.parentId());
-        assertTrue(childNode0.isLeaf());
-        assertEquals(2, childNode0.count());
-        {
-          final Object[] children
-            = ((Collection<Child>)childNode0.children)
-            .stream().map(Child::childId).toArray();
-          assertArrayEquals(new Object[] { 0L, 1L }, children);
-        }
-        assertEquals(twoBounds, childNode0.bounds());
-
-        assertEquals(Long.valueOf(1), childNode1.nodeId());
-        assertEquals(2, childNode1.parentId());
-        assertTrue(childNode0.isLeaf());
-        assertEquals(1, childNode1.count()); // object 2
-        {
-          final Object[] children
-            = ((Collection<Child>)childNode1.children)
-            .stream().map(Child::childId).toArray();
-          assertArrayEquals(new Object[] { 2L }, children);
-        }
-        assertEquals(twoHundredBounds, childNode1.bounds());
 
         assertEquals(new ArrayList<>(Arrays.asList(0L, 1L)),
                      new ArrayList<>((List<Long>)q.invoke(oneBounds)));
@@ -277,15 +220,14 @@ public class GridTest {
 
       final Depot depot = cluster.clusterDepot(Module.class.getName(), "*depot");
       final PState nodes = cluster.clusterPState(Module.class.getName(), "$$test__nodes");
-      final PState root = cluster.clusterPState(Module.class.getName(), "$$test__root");
       final PState object = cluster.clusterPState(Module.class.getName(), "$$object");
       final QueryTopologyClient q = cluster.clusterQuery(Module.class.getName(), "objectsInBounds");
-      final QueryTopologyClient<List<Long>> dump
-        = cluster.clusterQuery(Module.class.getName(), "dumpTree");
-      final QueryTopologyClient<List<String>> dumpDot
-        = cluster.clusterQuery(Module.class.getName(), "dumpDot");
-      final QueryTopologyClient<Boolean> verify
-        = cluster.clusterQuery(Module.class.getName(), "verifyTree");
+      // final QueryTopologyClient<List<Long>> dump
+      //   = cluster.clusterQuery(Module.class.getName(), "dumpTree");
+      // final QueryTopologyClient<List<String>> dumpDot
+      //   = cluster.clusterQuery(Module.class.getName(), "dumpDot");
+      // final QueryTopologyClient<Boolean> verify
+      //   = cluster.clusterQuery(Module.class.getName(), "verifyTree");
 
       final double[] origin = {0, 0};
       final double[] ones = {1, 1};
@@ -324,22 +266,16 @@ public class GridTest {
 
       System.out.println("Processed five entries creating two levels");
       {
-        /* INode node = root.selectOne(Path.stay()); */
-        /* assertNotNull(node); */
-        /* assertFalse(node.isLeaf()); */
-        /* assertTrue(node instanceof NonLeafNode); */
-        /* assertEquals(2, ((Node)node).count()); */
+        // LOGGER.error("Multi Dump");
+        // dump.invoke();
+        // List<String> elements = dumpDot.invoke();
+        // System.out.println("digraph G {");
+        // for (String s : elements) {
+        //   System.out.println(s);
+        // }
+        // System.out.println("}");
 
-        LOGGER.error("Multi Dump");
-        dump.invoke();
-        List<String> elements = dumpDot.invoke();
-        System.out.println("digraph G {");
-        for (String s : elements) {
-          System.out.println(s);
-        }
-        System.out.println("}");
-
-        LOGGER.error("Verify " + verify.invoke());
+        // LOGGER.error("Verify " + verify.invoke());
 
         assertEquals(
           new ArrayList<>(
@@ -415,18 +351,17 @@ public class GridTest {
 
       final Depot depot = cluster.clusterDepot(Module.class.getName(), "*depot");
       final PState nodes = cluster.clusterPState(Module.class.getName(), "$$test__nodes");
-      final PState root = cluster.clusterPState(Module.class.getName(), "$$test__root");
       final PState object = cluster.clusterPState(Module.class.getName(), "$$object");
       final PState objectLookup = cluster.clusterPState(Module.class.getName(), "$$objectLookup");
       final QueryTopologyClient q = cluster.clusterQuery(Module.class.getName(), "objectsInBounds");
-      final QueryTopologyClient<Boolean> verify
-        = cluster.clusterQuery(Module.class.getName(), "verifyTree");
-      final QueryTopologyClient<List<String>> dumpDot
-        = cluster.clusterQuery(Module.class.getName(), "dumpDot");
-      final QueryTopologyClient<List<Long>> dump
-        = cluster.clusterQuery(Module.class.getName(), "dumpTree");
-      final QueryTopologyClient<List<List<Object>>> dumpBounds
-        = cluster.clusterQuery(Module.class.getName(), "dumpBounds");
+      // final QueryTopologyClient<Boolean> verify
+      //   = cluster.clusterQuery(Module.class.getName(), "verifyTree");
+      // final QueryTopologyClient<List<String>> dumpDot
+      //   = cluster.clusterQuery(Module.class.getName(), "dumpDot");
+      // final QueryTopologyClient<List<Long>> dump
+      //   = cluster.clusterQuery(Module.class.getName(), "dumpTree");
+      // final QueryTopologyClient<List<List<Object>>> dumpBounds
+      //   = cluster.clusterQuery(Module.class.getName(), "dumpBounds");
 
       LOGGER.debug("START");
 
@@ -442,20 +377,20 @@ public class GridTest {
                                               numObjects);
       LOGGER.debug("Processed entries");
 
-      LOGGER.error("Dump");
-      dump.invoke();
+      // LOGGER.error("Dump");
+      // dump.invoke();
 
-      List<String> elements = dumpDot.invoke();
-      System.out.println("digraph G {");
-      for (String s : elements) {
-        System.out.println(s);
-      }
-      System.out.println("}");
+      // List<String> elements = dumpDot.invoke();
+      // System.out.println("digraph G {");
+      // for (String s : elements) {
+      //   System.out.println(s);
+      // }
+      // System.out.println("}");
 
-      List<List<Object>> boundsList = dumpBounds.invoke();
-      // GridHelpers.dumpBoundsList(boundsList);
+      // List<List<Object>> boundsList = dumpBounds.invoke();
+      // gridhelpers.dumpBoundsList(boundsList);
 
-      LOGGER.error("Verify " + verify.invoke());
+      // LOGGER.error("Verify " + verify.invoke());
 
       LOGGER.error("Checking objects");
 

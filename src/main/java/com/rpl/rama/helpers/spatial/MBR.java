@@ -465,7 +465,7 @@ public class MBR implements RamaSerializable {
    * @return True if they intersect, false otherwise
    * @throws IllegalArgumentException If the other MBR has a different number of dimensions
    */
-  public boolean isIntersects(MBR other) {
+  public boolean isIntersects(final MBR other) {
     assert hasSameDimensions(other) : "MBR dimensions must match";
     return overlaps(other);
     // if (isEmpty() || other.isEmpty() || !overlaps(other)) {

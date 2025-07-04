@@ -69,6 +69,12 @@ public class Grid implements RamaSerializable {
       }
       return this;
     }
+    public List<Long> search(MBR bounds) {
+      return (List<Long>) children
+          .<Child>stream()
+          .filter(child -> ((Child)child).getBounds().isIntersects(bounds) )
+          .collect(Collectors.toList());
+    }
   }
 
   /** The overall bounds of the grid. */
@@ -102,16 +108,20 @@ public class Grid implements RamaSerializable {
     return product;
   }
 
+  private long dimensionIndex(int dimension, double value) {
+    return Math.floorDiv(
+      (long) (value - this.bounds.getMin(dimension)),
+      (long) bounds.getExtent(dimension));
+  }
+
   /** Return the index for the center-point of the given bounds. */
   private long boundsIndex(final MBR bounds) {
     long factor = 1;
     long result = 0;
     for (int dim = 0; dim < bounds.dimensions(); dim = dim + 1) {
-      long i = Math.floorDiv(
-        (long)(bounds.getCenterPoint(dim) - this.bounds.getMin(dim)),
-        (long) bounds.getExtent(dim));
+      long i = dimensionIndex(dim, bounds.getCenterPoint(dim));
       result = result + i * factor;
-      factor = factor * this.numExtents[dim];
+      factor = factor * numExtents[dim];
     }
     return result;
   }
@@ -127,13 +137,21 @@ public class Grid implements RamaSerializable {
                     PState.mapSchema(Long.class, Object.class));
   }
 
-  void declareQueries(final Topologies topology) {
+  void declareQueries(final Topologies topologies) {
+    topologies.query("objectsInBounds", "*bounds").out("*objects")
+        // .each(Ops.LOG_DEBUG,
+        //       LOGGER,
+        //       new Expr(Ops.TO_STRING, "search objectsInBounds: ", "*bounds"))
+        .each(Ops.LOG_DEBUG, LOGGER, "search")
+        .macro(search("*bounds", "*object"))
+        .originPartition()
+        .agg(Agg.list("*object")).out("*objects");
   }
 
   /** Declare all the pobjects required for the Grid. */
   public void declare(final Topologies topologies,
                       final MicrobatchTopology topology) {
-    declarePStates(topology);
+  declarePStates(topology);
     declareQueries(topologies);
   }
 
@@ -207,5 +225,38 @@ public class Grid implements RamaSerializable {
     return Block
         .each(Node::performOps, nodeVar, opsVar)
         .localTransform(nodesPstate, Path.key(indexVar).termVal(nodeVar));
+  }
+
+  private List<Long> cells(MBR bounds) {
+    List<Long> cells = new ArrayList<>();
+    long factor = 1;
+    for (int dim = 0; dim <  bounds.dimensions(); dim = dim + 1) {
+      long minIndex = dimensionIndex(dim, bounds.getMin(dim));
+      long maxIndex = dimensionIndex(dim, bounds.getMin(dim));
+      for (long i = minIndex * factor; i <= maxIndex * factor; i = i++) {
+        cells.add(i);
+      }
+      factor = factor * numExtents[dim];
+    }
+    return cells;
+  }
+
+  /** Given an Grid, find all records whose
+      rectangles overlap a search bounds.
+  */
+  private Block search(final String boundsVar,
+                       final String outVar) {
+    return Block
+        .each(Ops.MODULE_INSTANCE_INFO).out("*mii")
+        .each(ModuleInstanceInfo::getNumTasks, "*mii").out("*numPartitions")
+        .each(Grid::cells, this, boundsVar).out("*cells")
+        .each(Ops.EXPLODE, "*cells").out("*index")
+        .each(Grid::boundsPartition,
+              "*index",
+              "*numPartitions").out("*partition")
+        .directPartition("*partition")
+        .localSelect(nodesPstate, Path.key("*index")).out("*node")
+        .each(Node::search, "*node", boundsVar).out("*objects")
+        .each(Ops.EXPLODE, "*objects").out("*object");
   }
 }
