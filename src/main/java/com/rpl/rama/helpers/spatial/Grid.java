@@ -128,7 +128,7 @@ public class Grid implements RamaSerializable {
 
   /** Return the partition for the center-point of the given bounds. */
   private static long boundsPartition(final long boundsIndex,
-                                      final long numPartitions) {
+                                      final int numPartitions) {
     return boundsIndex % numPartitions;
   }
 
@@ -185,6 +185,7 @@ public class Grid implements RamaSerializable {
               "*index",
               "*numPartitions").out("*partition")
         .directPartition("*partition")
+        .each(Ops.LOG_DEBUG, LOGGER, "Writing {} on {}", "*index", "*partition")
         .localTransform(
           modTableVar,
           Path.key("*index").nullToList().afterElem().termVal("*modification"))
@@ -230,10 +231,11 @@ public class Grid implements RamaSerializable {
   private List<Long> cells(MBR bounds) {
     List<Long> cells = new ArrayList<>();
     long factor = 1;
-    for (int dim = 0; dim <  bounds.dimensions(); dim = dim + 1) {
+    for (int dim = 0; dim < bounds.dimensions(); dim = dim + 1) {
       long minIndex = dimensionIndex(dim, bounds.getMin(dim));
-      long maxIndex = dimensionIndex(dim, bounds.getMin(dim));
-      for (long i = minIndex * factor; i <= maxIndex * factor; i = i++) {
+      long maxIndex = dimensionIndex(dim, bounds.getMax(dim));
+      LOGGER.debug("Indices: {} {}", minIndex, maxIndex);
+      for (long i = minIndex * factor; i <= maxIndex * factor; i = i + 1) {
         cells.add(i);
       }
       factor = factor * numExtents[dim];
@@ -247,16 +249,31 @@ public class Grid implements RamaSerializable {
   private Block search(final String boundsVar,
                        final String outVar) {
     return Block
+        .each(Ops.LOG_DEBUG, LOGGER, "search macro")
         .each(Ops.MODULE_INSTANCE_INFO).out("*mii")
         .each(ModuleInstanceInfo::getNumTasks, "*mii").out("*numPartitions")
+        .each(Ops.LOG_DEBUG,
+              LOGGER,
+              "search num partitions {}", "*numPartitions")
         .each(Grid::cells, this, boundsVar).out("*cells")
         .each(Ops.EXPLODE, "*cells").out("*index")
         .each(Grid::boundsPartition,
               "*index",
               "*numPartitions").out("*partition")
+        .each(Ops.LOG_DEBUG,
+              LOGGER,
+              "Reading node {} on {}",
+              "*index",
+              "*partition")
         .directPartition("*partition")
         .localSelect(nodesPstate, Path.key("*index")).out("*node")
+        .each(Ops.LOG_DEBUG,
+              LOGGER,
+              "Node: {}",
+              "*node")
+        .keepTrue(new Expr(Ops.IS_NOT_NULL, "*node"))
         .each(Node::search, "*node", boundsVar).out("*objects")
+        .each(Ops.LOG_DEBUG, LOGGER, "Objects {}", "objects")
         .each(Ops.EXPLODE, "*objects").out("*object");
   }
 }

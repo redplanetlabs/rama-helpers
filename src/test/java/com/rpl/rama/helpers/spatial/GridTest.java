@@ -345,7 +345,7 @@ public class GridTest {
     final int numObjects = 20;
     List<RandomObject> objects = generateObjects(random, bounds, numObjects);
 
-    try(InProcessCluster cluster = InProcessCluster.create()) {
+    try (InProcessCluster cluster = InProcessCluster.create()) {
       final RamaModule module = new Module();
       cluster.launchModule(module, new LaunchConfig(4, 3));
 
@@ -396,22 +396,22 @@ public class GridTest {
 
       ArrayList<Long> objectIds = new ArrayList<>();
 
-      // for (int i = 0; i < numObjects ; i++) {
-      //   LOGGER.error("XX "+ i + " " + objectLookup.selectOne(Path.key(Long.valueOf(i))));
-      //   objectIds.add(objectLookup.selectOne(Path.key(Long.valueOf(i))));
-      // }
+      for (int i = 0; i < numObjects ; i++) {
+        LOGGER.error("XX "+ i + " " + objectLookup.selectOne(Path.key(Long.valueOf(i))));
+        objectIds.add(objectLookup.selectOne(Path.key(Long.valueOf(i))));
+      }
 
-      // for (int i = 0; i < numObjects ; i++) {
-      //     RandomObject robject = objects.get(i);
-      //     ArrayList<Long> foundObjects
-      //       = new ArrayList<>((List<Long>) q.invoke(robject.bounds));
+      for (int i = 0; i < numObjects ; i++) {
+          RandomObject robject = objects.get(i);
+          ArrayList<Long> foundObjects
+            = new ArrayList<>((List<Long>) q.invoke(robject.bounds));
 
-      //     System.out.println("Found "+foundObjects+
-      //                        " for " + robject +
-      //                        " i=" + i +
-      //                        " objectId=" + objectIds.get(i));
-      //     assertTrue(foundObjects.contains(objectIds.get(i)));
-      //   }
+          System.out.println("Found "+foundObjects+
+                             " for " + robject +
+                             " i=" + i +
+                             " objectId=" + objectIds.get(i));
+          assertTrue(foundObjects.contains(objectIds.get(i)));
+        }
     }
 
     LOGGER.debug("uncoordinatedTest done");
