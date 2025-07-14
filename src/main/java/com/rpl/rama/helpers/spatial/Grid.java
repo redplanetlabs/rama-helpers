@@ -53,6 +53,10 @@ public class Grid implements RamaSerializable {
       this.children = Vector.empty();
     }
 
+    public static Node create() {
+      return new Node();
+    }
+
     public Node add(MBR bounds, long id) {
       children = children.cons(new Child(bounds, id));
       return this;
@@ -73,6 +77,7 @@ public class Grid implements RamaSerializable {
       return (List<Long>) children
           .<Child>stream()
           .filter(child -> ((Child)child).getBounds().isIntersects(bounds) )
+          .map(child -> ((Child)child).childId())
           .collect(Collectors.toList());
     }
   }
@@ -158,14 +163,13 @@ public class Grid implements RamaSerializable {
   private <T> Block buildModTable(
     final String userModTableVar,
     final ModificationConvertorFunction<T> dataConvertor,
-    final String modTableVar,
-    final String rootUpdateVar) {
+    final String modTableVar) {
     return Block
         .each(Ops.LOG_TRACE, LOGGER, "buildModTable")
         .each(Ops.MODULE_INSTANCE_INFO).out("*mii")
         .each(ModuleInstanceInfo::getNumTasks, "*mii").out("*numPartitions")
         .allPartition()
-        .localSelect(modTableVar, Path.all()).out("*data")
+        .localSelect(userModTableVar, Path.all()).out("*data")
         // .each(Ops.LOG_TRACE, LOGGER,
         //       new Expr(Ops.TO_STRING, "DATA ", "*data"))
         .each((T data, OutputCollector collector) -> {
@@ -198,12 +202,10 @@ public class Grid implements RamaSerializable {
 
     return Block
         .each(Ops.LOG_DEBUG, LOGGER, "handleModifications")
-        .batchBlock(Block.keepTrue(false).materialize().out("$$rootUpdate"))
         .batchBlock(Block.keepTrue(false).materialize().out("$$modTable"))
         .batchBlock(Block.macro(buildModTable(userModTableVar,
                                               dataConvertor,
-                                              "$$modTable",
-                                              "$$rootUpdate")))
+                                              "$$modTable")))
         .each(Ops.LOG_DEBUG, LOGGER, "buildModTable finished")
 
         .batchBlock(
@@ -211,11 +213,16 @@ public class Grid implements RamaSerializable {
           .allPartition()
           .each(Ops.LOG_TRACE, LOGGER, "Loop body for task")
           .localSelect("$$modTable", Path.all()).out("*nodeOps")
-          .each(Ops.LOG_TRACE, LOGGER, "Loop body AA")
+          .each(Ops.LOG_TRACE, LOGGER, "Loop body AA {}", "*nodeOps")
           // TODO move this destructuring into updateNode
           .each(Ops.FIRST, "*nodeOps").out("*index")
           .each(Ops.LAST, "*nodeOps").out("*nodeOpsList")
-          .localSelect(nodesPstate, Path.key("*index")).out("*node")
+          .localSelect(nodesPstate, Path.key("*index")).out("*node1")
+          .each(Ops.LOG_TRACE, LOGGER, " index: {} node: {}", "*index", "*node1")
+          .ifTrue(
+            new Expr(Ops.IS_NOT_NULL, "*node1"),
+            Block.each(Ops.IDENTITY, "*node1").out("*node"),
+            Block.each(Node::create).out("*node"))
           .macro(updateNode("*index", "*node", "*nodeOpsList"))
           .each(Ops.LOG_DEBUG, LOGGER, "handleModifications done"));
   }
@@ -234,12 +241,14 @@ public class Grid implements RamaSerializable {
     for (int dim = 0; dim < bounds.dimensions(); dim = dim + 1) {
       long minIndex = dimensionIndex(dim, bounds.getMin(dim));
       long maxIndex = dimensionIndex(dim, bounds.getMax(dim));
-      LOGGER.debug("Indices: {} {}", minIndex, maxIndex);
+      LOGGER.debug("Indices: {} {} factor {}", minIndex, maxIndex, factor);
       for (long i = minIndex * factor; i <= maxIndex * factor; i = i + 1) {
         cells.add(i);
       }
+      LOGGER.debug("  numExtents: {} {} factor {}", numExtents[dim]);
       factor = factor * numExtents[dim];
     }
+    // TODO this can return duplicates for cell 0
     return cells;
   }
 
@@ -257,6 +266,7 @@ public class Grid implements RamaSerializable {
               "search num partitions {}", "*numPartitions")
         .each(Grid::cells, this, boundsVar).out("*cells")
         .each(Ops.EXPLODE, "*cells").out("*index")
+        .each(Ops.LOG_DEBUG, LOGGER, "cell {}", "*index")
         .each(Grid::boundsPartition,
               "*index",
               "*numPartitions").out("*partition")

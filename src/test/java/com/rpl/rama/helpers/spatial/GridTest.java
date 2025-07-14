@@ -97,8 +97,9 @@ public class GridTest {
             .hashPartition("$$objectLookup", "*object")
             .localTransform("$$objectLookup",
                             Path.key("*object").termVal("*objectId"))
-            .each(Ops.PRINTLN,
-                  "Added object",
+            .each(Ops.LOG_ERROR,
+                  LOGGER,
+                  "Added object: id {}, obj {}, bounds {}",
                   "*objectId",
                   "*object",
                   "*bounds")
@@ -406,10 +407,11 @@ public class GridTest {
           ArrayList<Long> foundObjects
             = new ArrayList<>((List<Long>) q.invoke(robject.bounds));
 
-          System.out.println("Found "+foundObjects+
-                             " for " + robject +
-                             " i=" + i +
-                             " objectId=" + objectIds.get(i));
+          LOGGER.error("Found {} for {} i={} objectId={}",
+                       foundObjects,
+                       robject,
+                       i,
+                       objectIds.get(i));
           assertTrue(foundObjects.contains(objectIds.get(i)));
         }
     }
