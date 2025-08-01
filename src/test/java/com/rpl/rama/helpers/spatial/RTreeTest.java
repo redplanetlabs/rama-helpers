@@ -78,13 +78,17 @@ public class RTreeTest {
 
       // ETL
       m.source("*depot").out("*microbatch")
+          .each(Ops.LOG_DEBUG, LOGGER, "Microbatch")
+          .batchBlock(Block.keepTrue(false).materialize().out("$$objects"))
           .batchBlock(
             Block
             .each(Ops.LOG_ERROR, LOGGER, "New Microbatch")
             .explodeMicrobatch("*microbatch").out("*v")
+
+            // .each(Ops.EXPLODE, "*batch").out("*v")
             .macro(idGenerator.genId("*objectId"))
             .macro(extractJavaFields("*v", "*bounds", "*object"))
-            .each(Ops.LOG_ERROR,
+            .each(Ops.LOG_DEBUG,
                   LOGGER,
                   new Expr(Ops.TO_STRING,
                            "objectId=", "*objectId",
@@ -96,19 +100,46 @@ public class RTreeTest {
             .hashPartition("$$objectLookup", "*object")
             .localTransform("$$objectLookup",
                             Path.key("*object").termVal("*objectId"))
-            .each(Ops.PRINTLN,
-                  "Added object",
-                  "*objectId",
-                  "*object",
-                  "*bounds")
+
+            .each(Ops.LOG_DEBUG, LOGGER,
+                  "Added object id={} object={} bounds={}",
+                  "*objectId", "*object", "*bounds")
+            .each(Ops.TUPLE, "*bounds", "*objectId").out("*tuple")
+            .localTransform("$$objects", Path.afterElem().termVal("*tuple"))
+            // TODO remove this hack for number of objects
             .globalPartition()
-            .agg(Agg.list(new Expr(Ops.TUPLE,
-                                   "*bounds",
-                                   "*objectId"))).out("$$objects"))
+            .agg(Agg.count()).out("*numObjects")
+            .each(Ops.LOG_DEBUG, LOGGER, "numObjects: {}", "*numObjects")
+
+            // .macro(idGenerator.genId("*objectId"))
+            // .macro(extractJavaFields("*v", "*bounds", "*object"))
+            // .each(Ops.LOG_ERROR,
+            //       LOGGER,
+            //       new Expr(Ops.TO_STRING,
+            //                "objectId=", "*objectId",
+            //                ", MB Process: ", "*v"))
+            // .hashPartition("$$object", "*objectId")
+            // .localTransform("$$object",
+            //                 Path.key("*objectId").termVal("*object"))
+
+            // .hashPartition("$$objectLookup", "*object")
+            // .localTransform("$$objectLookup",
+            //                 Path.key("*object").termVal("*objectId"))
+            // .each(Ops.PRINTLN,
+            //       "Added object",
+            //       "*objectId",
+            //       "*object",
+            //       "*bounds")
+            // .globalPartition()
+            // .agg(Agg.list(new Expr(Ops.TUPLE,
+            //                        "*bounds",
+            //                        "*objectId"))).out("$$objects")
+                      )
             .macro(
               rTree.handleModifications(
                 "$$objects",
                 (List<Object> data, ModificationCollector collector) -> {
+                  LOGGER.debug("Collect {}", data);
                   collector.addObject(
                     (MBR)data.get(0),
                     (Long)data.get(1));}));
@@ -405,7 +436,7 @@ public class RTreeTest {
     Random random = new Random(seed);
 
     final MBR bounds = new MBR(new double[]{0,0}, new double[]{100,1000});
-    final int numObjects = 20;
+    final int numObjects = 200;
     List<RandomObject> objects = generateObjects(random, bounds, numObjects);
 
     try(InProcessCluster cluster = InProcessCluster.create()) {
@@ -439,7 +470,7 @@ public class RTreeTest {
       cluster.waitForMicrobatchProcessedCount(module.getClass().getName(),
                                               "m",
                                               numObjects);
-      LOGGER.debug("Processed entries");
+      LOGGER.debug("Processed {} entries", numObjects);
 
       LOGGER.error("Dump");
       dump.invoke();
@@ -470,10 +501,11 @@ public class RTreeTest {
           ArrayList<Long> foundObjects
             = new ArrayList<>((List<Long>) q.invoke(robject.bounds));
 
-          System.out.println("Found "+foundObjects+
-                             " for " + robject +
-                             " i=" + i +
-                             " objectId=" + objectIds.get(i));
+          LOGGER.error("Found {} for {} i={} objectId={}",
+                       foundObjects,
+                       robject,
+                       i,
+                       objectIds.get(i));
           assertTrue(foundObjects.contains(objectIds.get(i)));
         }
     }

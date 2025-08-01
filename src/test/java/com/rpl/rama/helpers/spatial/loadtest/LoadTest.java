@@ -32,6 +32,7 @@ import com.rpl.rama.RamaModule;
 import com.rpl.rama.RamaSerializable;
 import com.rpl.rama.helpers.ModuleUniqueIdPState;
 import com.rpl.rama.helpers.spatial.AddObject;
+import com.rpl.rama.helpers.spatial.Grid;
 import com.rpl.rama.helpers.spatial.MBR;
 import com.rpl.rama.helpers.spatial.RTree;
 import com.rpl.rama.helpers.spatial.ModificationCollector;
@@ -228,15 +229,75 @@ public class LoadTest {
     }
   }
 
-  public static class SpatialModule implements RamaModule {
+  public static class QueryData implements RamaSerializable {
+    public Boolean neverQueried;
+    public long queriesStart;
+    public long queriesEnd;
+    public long numQueried;
+
+    public QueryData() {
+      neverQueried = true;
+      queriesStart = Instant.now().toEpochMilli();
+      queriesEnd = 0L;
+      numQueried = 0L;
+    }
+
+    public QueryData reset() {
+      LOGGER.debug("reset");
+      neverQueried = true;
+      queriesStart = 0L;
+      queriesEnd = 0L;
+      numQueried = 0L;
+      return this;
+    }
+
+    QueryData someQueried(long n) {
+      LOGGER.debug("someQueried: n=" + n + ", this=" + this);
+      if (neverQueried) {
+        queriesStart = Instant.now().toEpochMilli();
+        queriesEnd = Instant.now().toEpochMilli();
+        neverQueried = false;
+      } else {
+        queriesEnd = Instant.now().toEpochMilli();
+        numQueried = numQueried + n;
+      }
+      return this;
+    }
+
+    Double queryDuration() {
+      return Duration.between(
+          Instant.ofEpochMilli(queriesStart),
+          Instant.ofEpochMilli(queriesEnd)).toMillis() / 1000.0;
+    }
+
+    Double queryRate() {
+      return numQueried / queryDuration();
+    }
+
+    Long getNumQueried() {
+      return numQueried;
+    }
+
+    @Override
+    public String toString() {
+      return "QueryData [neverQueried=" + neverQueried +
+          ", queriesStart=" + queriesStart +
+          ", queriesEnd=" + queriesEnd +
+          ", numQueried=" + numQueried + "]";
+    }
+  }
+
+  public static class RTreeModule implements RamaModule {
     ModuleUniqueIdPState idGenerator = new ModuleUniqueIdPState("$$objectId");
 
     @Override
     public void define(Setup setup, Topologies topologies) {
       setup.declareDepot("*depot", Depot.random());
       setup.declareDepot("*statsDepot", Depot.random());
+      setup.declareDepot("*queryStatsDepot", Depot.random());
 
-      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 1000);
+      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 20 // 1000
+                                         );
       // setup.setLaunchModuleDynamicOption("depot.max.fetch", 1024);
 
       // setup.setLaunchModuleDynamicOption(
@@ -245,6 +306,7 @@ public class LoadTest {
       MicrobatchTopology m = topologies.microbatch("m");
       m.pstate("$$object", PState.mapSchema(Long.class, Object.class));
       m.pstate("$$loadData", LoadData.class).initialValue(new LoadData());
+      m.pstate("$$queryData", QueryData.class).initialValue(new QueryData());
 
       // This is just a test convenience
       m.pstate("$$objectLookup", PState.mapSchema(Object.class, Long.class));
@@ -343,6 +405,187 @@ public class LoadTest {
           .each(Ops.LOG_DEBUG, LOGGER, "Microbatch statsDepot done")
           ;
 
+      m.source("*queryStatsDepot").out("*microbatch")
+          .each(Ops.LOG_DEBUG, LOGGER, "Microbatch queryStatsDepot")
+          .explodeMicrobatch("*microbatch").out("*data")
+          .ifTrue(
+            new Expr(Ops.IS_INSTANCE_OF, Long.class, "*data"),
+            Block
+            .localTransform(
+              "$$queryData",
+              Path.term(QueryData::someQueried, "*data")))
+          .each(Ops.LOG_DEBUG, LOGGER, "Microbatch statsDepot done")
+          ;
+
+      topologies.query("loadData").out("*finalLoadData")
+          // .each(Ops.LOG_TRACE, LOGGER,"allProcessed")
+          .allPartition()
+          .localSelect("$$loadData", Path.stay()).out("*loadData")
+          .macro(extractJavaFields("*loadData",
+                                   "*numProcessed",
+                                   "*processingStart",
+                                   "*processingEnd"))
+          .each(LoadData::isAllProcessed, "*loadData").out("*allProcessed")
+          .keepTrue(new Expr(Ops.GREATER_THAN, "*processingStart", 0L))
+          .originPartition()
+          .agg(Agg.sum("*numProcessed")).out("*totalProcessed")
+          .agg(Agg.min("*processingStart")).out("*minStart")
+          .agg(Agg.max("*processingEnd")).out("*maxEnd")
+          .agg(Agg.and("*allProcessed")).out("*allAllProcessed")
+          .each(Ops.TUPLE,
+                "*totalProcessed",
+                "*minStart",
+                "*maxEnd",
+                new Expr(Ops.AND,
+                         "*allAllProcessed",
+                         new Expr(Ops.IS_POSITIVE, "*totalProcessed")))
+                .out("*finalLoadData");
+
+      topologies.query("resetData").out("*out")
+          .allPartition()
+          .depotPartitionAppend("*statsDepot", "reset")
+          .each(Ops.IDENTITY, "reset").out("*reset")
+          .originPartition()
+          .agg(Agg.last("*reset")).out("*out");
+
+      topologies.query("queryData").out("*finalData")
+          // .each(Ops.LOG_TRACE, LOGGER,"allProcessed")
+          .allPartition()
+          .localSelect("$$queryData", Path.stay()).out("*queryData")
+          .macro(extractJavaFields("*queryData",
+                                   "*numQueried",
+                                   "*queriesStart",
+                                   "*queriesEnd"))
+          .keepTrue(new Expr(Ops.GREATER_THAN, "*queriesStart", 0L))
+          .originPartition()
+          .agg(Agg.sum("*numQueried")).out("*totalQueried")
+          .agg(Agg.min("*queriesStart")).out("*minStart")
+          .agg(Agg.max("*queriesEnd")).out("*maxEnd")
+          .each(Ops.TUPLE,
+                "*totalQueried",
+                "*minStart",
+                "*maxEnd")
+          .out("*finalData");
+
+
+    }
+  }
+
+  public static String RTreeModuleName = RTreeModule.class.getName();
+
+  public static class GridModule implements RamaModule {
+    ModuleUniqueIdPState idGenerator = new ModuleUniqueIdPState("$$objectId");
+
+    @Override
+    public void define(Setup setup, Topologies topologies) {
+      setup.declareDepot("*depot", Depot.random());
+      setup.declareDepot("*statsDepot", Depot.random());
+
+      setup.setLaunchModuleDynamicOption("depot.microbatch.max.records", 20 // 1000
+                                         );
+      // setup.setLaunchModuleDynamicOption("depot.max.fetch", 1024);
+
+      // setup.setLaunchModuleDynamicOption(
+      //   "topology.microbatch.pstate.flush.path.count", 1024);
+
+      MicrobatchTopology m = topologies.microbatch("m");
+      m.pstate("$$object", PState.mapSchema(Long.class, Object.class));
+      m.pstate("$$loadData", LoadData.class).initialValue(new LoadData());
+
+      // This is just a test convenience
+      m.pstate("$$objectLookup", PState.mapSchema(Object.class, Long.class));
+
+      idGenerator.declarePState(m);
+
+      // declare the Grid
+      final int[] extents = {10, 10};
+      final MBR bounds = new MBR(new double[] { 0, 0 },
+                                 new double[] { 100, 1000});
+      Grid grid = new Grid(bounds, extents, "test");
+      grid.declare(topologies, m);
+
+      // ETL
+      m.source("*depot").out("*microbatch")
+          .each(Ops.LOG_DEBUG, LOGGER, "Microbatch")
+          .batchBlock(Block.keepTrue(false).materialize().out("$$objects"))
+
+          .batchBlock(
+            Block
+            // .each(Ops.LOG_TRACE, LOGGER, "New Microbatch")
+            .explodeMicrobatch("*microbatch").out("*batch")
+            .each(Ops.EXPLODE, "*batch").out("*v")
+            .macro(idGenerator.genId("*objectId"))
+            .macro(extractJavaFields("*v", "*bounds", "*object"))
+            // .each(Ops.LOG_TRACE,
+            //       LOGGER,
+            //       new Expr(Ops.TO_STRING,
+            //                "objectId=", "*objectId",
+            //                ", MB Process: ", "*v"))
+            .hashPartition("$$object", "*objectId")
+            .localTransform("$$object",
+                            Path.key("*objectId").termVal("*object"))
+
+            .hashPartition("$$objectLookup", "*object")
+            .localTransform("$$objectLookup",
+                            Path.key("*object").termVal("*objectId"))
+
+            .each(Ops.LOG_TRACE, LOGGER,
+                  new Expr(Ops.TO_STRING,
+                           "Added object", "*objectId", "*object", "*bounds"))
+            .each(Ops.TUPLE, "*bounds", "*objectId").out("*tuple")
+            .localTransform("$$objects", Path.afterElem().termVal("*tuple"))
+            // TODO remove this hack for number of objects
+            .globalPartition()
+            .agg(Agg.count()).out("*numObjects")
+            .each(Ops.LOG_DEBUG, LOGGER, "numObjects: {}", "*numObjects")
+
+            // .each(Ops.CURRENT_TASK_ID).out("*taskIdTmp")
+            .ifTrue(
+              new Expr(Ops.IS_POSITIVE, "*numObjects"),
+              Block
+              .localTransform(
+                "$$loadData",
+                Path.term(LoadData::someProcessed, "*numObjects")),
+              Block
+              .localTransform(
+                "$$loadData",
+                Path.term(LoadData::noneProcessed)))
+            // .directPartition("*taskIdTmp")
+            // .globalPartition()
+            // .depotPartitionAppend("*statsDepot", "*numObjects")
+            // .each(Ops.LOG_DEBUG, LOGGER,
+            //       new Expr(Ops.TO_STRING, "before handleModifications"))
+                      )
+
+            .macro(
+              grid.handleModifications(
+                "$$objects",
+                (List<Object> data, ModificationCollector collector) -> {
+                  collector.addObject(
+                    (MBR) data.get(0),
+                    (Long) data.get(1));
+                }))
+          .each(Ops.LOG_DEBUG, LOGGER, "Microbatch done");
+
+      m.source("*statsDepot").out("*microbatch")
+          .each(Ops.LOG_DEBUG, LOGGER, "Microbatch statsDepot")
+          .explodeMicrobatch("*microbatch").out("*data")
+          .ifTrue(
+            new Expr(Ops.IS_INSTANCE_OF, Long.class, "*data"),
+            Block.ifTrue(
+              new Expr(Ops.IS_POSITIVE, "*data"),
+              Block
+              .localTransform(
+                "$$loadData",
+                Path.term(LoadData::someProcessed, "*data")),
+              Block
+              .localTransform(
+                "$$loadData",
+                Path.term(LoadData::noneProcessed))),
+            Block.localTransform("$$loadData", Path.term(LoadData::reset)))
+          .each(Ops.LOG_DEBUG, LOGGER, "Microbatch statsDepot done")
+          ;
+
       topologies.query("loadData").out("*finalLoadData")
           // .each(Ops.LOG_TRACE, LOGGER,"allProcessed")
           .localSelect("$$loadData", Path.stay()).out("*loadData")
@@ -375,17 +618,27 @@ public class LoadTest {
     }
   }
 
-  public static String spatialModuleName = SpatialModule.class.getName();
+  public static String GridModuleName = GridModule.class.getName();
 
-  public static class Module implements RamaModule {
+  public static class LoadModule implements RamaModule {
 
     static long seed = 0; // (new Random()).nextLong();
     static boolean enabled = false;
+
+    String spatialModuleName;
 
     LoadTestStateMachine statemachine = new LoadTestStateMachine();
 
     static volatile RamaFunction3<String,String,Boolean, Boolean> pauseFn =
         null;
+
+    LoadModule(String spatialModuleName) {
+      this.spatialModuleName = spatialModuleName;
+    }
+
+    LoadModule() {
+      this.spatialModuleName = GridModuleName;
+    }
 
     static Boolean setTopologyActive(String moduleName,
                                      String topologyName,
@@ -442,14 +695,19 @@ public class LoadTest {
         // N 2node cluster 2000 gives 85% load
       int numNodes = 1;
       setup.declareObject("*loader",
-                          new RandomObjectGenerator(bounds, 40 * 2048));
-      setup.clusterDepot("*depot2", SpatialModule.class.getName(), "*depot");
-      setup.clusterQuery("*loadDataQuery", SpatialModule.class.getName(), "loadData");
-      setup.clusterQuery("*resetDataQuery", SpatialModule.class.getName(), "resetData");
+                          new RandomObjectGenerator(bounds, // 40 * 2048
+                                                    1 * 100));
+      setup.declareObject("*querent",
+                          new RandomQueryGenerator(bounds, // 40
+                                                   1 * 2048));
+      setup.clusterDepot("*depot2", spatialModuleName, "*depot");
+      setup.clusterDepot("*queryStatsDepot", spatialModuleName, "*queryStatsDepot");
+      setup.clusterQuery("*loadDataQuery", spatialModuleName, "loadData");
+      setup.clusterQuery("*resetDataQuery", spatialModuleName, "resetData");
+      setup.clusterQuery("*queryDataQuery", spatialModuleName, "queryData");
+      setup.clusterQuery("*objectsInBounds", spatialModuleName, "objectsInBounds");
 
       MicrobatchTopology m = topologies.microbatch("m");
-
-      // m.pstate("$$inProgressAppends", PState.mapSchema(Long.class, Long.class));
 
       final String smStateVar = "*smState";
 
@@ -470,7 +728,7 @@ public class LoadTest {
                 new Expr(Ops.EQUAL,
                          "*state",
                          LoadTestStateMachine.LoadTestState.DISABLE_MB))
-              .each(Module::setTopologyActive, spatialModuleName, "m", false)
+              .each(LoadModule::setTopologyActive, spatialModuleName, "m", false)
               .each(Ops.LOG_DEBUG, LOGGER, "Disabled topology")
               .each(Ops.IDENTITY,
                     LoadTestStateMachine.LoadTestState.LOAD_DATA)
@@ -483,7 +741,7 @@ public class LoadTest {
                          LoadTestStateMachine.LoadTestState.LOAD_DATA))
               .allPartition()
               .each(Ops.LOG_DEBUG, LOGGER, "LOAD DATA")
-              .each(Module::mkRandom).out("*random")
+              .each(LoadModule::mkRandom).out("*random")
               .each(Loader::loadData, "*loader", "*random").out("*result")
               .macro(extractJavaFields("*result", "*addObjects", "*done"))
               .ifTrue(
@@ -504,7 +762,7 @@ public class LoadTest {
                   .ifTrue(
                     new Expr(Iterator<List<LoadDataResult>>::hasNext, "*iter"),
                     Block
-                    .each(Module::nextBatch, "*iter").out("*batch")
+                    .each(LoadModule::nextBatch, "*iter").out("*batch")
                     // need to has to use the mirrored partition
                     .hashPartition("*depot2", "*batch")
                     .depotPartitionAppend("*depot2", "*batch", AckLevel.NONE)
@@ -522,10 +780,13 @@ public class LoadTest {
                          "*state",
                          LoadTestStateMachine.LoadTestState.ENABLE_MB))
               .each(Ops.LOG_DEBUG, LOGGER, "ENABLE_MB")
-              .ifTrue(new Expr(Module::isNotEnabled),
+              .ifTrue(new Expr(LoadModule::isNotEnabled),
                 Block
-                .each(Module::setTopologyActive, spatialModuleName, "m", true)
-                .each(Module::setEnabled, true))
+                .each(Ops.LOG_DEBUG, LOGGER, "ENABLE_MB enabling")
+                .each(LoadModule::setTopologyActive, spatialModuleName, "m", true)
+                .each(LoadModule::setEnabled, true),
+                Block
+                .each(Ops.LOG_DEBUG, LOGGER, "ENABLE_MB already enabled"))
               .each(Loader::getTotal, "*loader").out("*totalAppends")
               .each(Ops.LOG_DEBUG, LOGGER, "Total appends: {}", "*totalAppends")
 
@@ -589,10 +850,52 @@ public class LoadTest {
                 new Expr(Ops.EQUAL,
                          "*state",
                          LoadTestStateMachine.LoadTestState.QUERY_PERFORMANCE))
+              .allPartition()
               .each(Ops.LOG_DEBUG, LOGGER, "QUERY_PERFORMANCE")
-              .each(Ops.IDENTITY, LoadTestStateMachine.LoadTestState.DONE)
+              .each(LoadModule::mkRandom).out("*random")
+              .each(Querent::generateQuery, "*querent", "*random").out("*result")
+              .macro(extractJavaFields("*result", "*bounds", "*done"))
+              .ifTrue(
+                "*done",
+                Block
+                .each(Ops.CURRENT_TASK_ID).out("*taskId")
+                .each(Ops.IDENTITY,
+                      LoadTestStateMachine.LoadTestSignal.QUERY_COMPLETE)
+                .out("*signal")
+                .macro(statemachine.stateMachine.setSignal("*taskId", "*signal")),
+                // .hashPartition("*depot2", "*batch")
+                Block
+                .invokeQuery("*objectsInBounds", "*bounds").out("*objects")
+                .each(Ops.LOG_ERROR, LOGGER, "Received objects")
+                .hashPartition("*queryStatsDepot", 1) // TODO make this random
+                .depotPartitionAppend("*queryStatsDepot", 1, AckLevel.APPEND_ACK))
+              .each(Ops.LOG_DEBUG, LOGGER, "QUERY_PERFORMANCE DONE"),
+
+              Case.create(
+                new Expr(Ops.EQUAL,
+                         "*state",
+                         LoadTestStateMachine.LoadTestState.QUERY_DONE))
+              .each(Ops.IDENTITY,
+                    LoadTestStateMachine.LoadTestState.DONE)
               .out("*nextState")
-              .macro(statemachine.stateMachine.transitionTo("*nextState")),
+              .macro(statemachine.stateMachine.transitionTo("*nextState"))
+
+              .invokeQuery("*queryDataQuery").out("*queryData")
+              .each(Ops.LOG_DEBUG, LOGGER,
+                    new Expr(Ops.TO_STRING, "queryData: ", "*queryData"))
+              .each(Ops.EXPAND, "*queryData").out("*totalQueries",
+                                                  "*minStart",
+                                                  "*maxEnd")
+
+              .each(Ops.MINUS_LONG, "*maxEnd", "*minStart").out("*duration")
+              .each(Ops.DIV, "*totalQueries", "*duration").out("*qratePerMs")
+              .each(Ops.TIMES_LONG, "*qratePerMs", 1000.0).out("*qrate")
+              .each(Ops.LOG_INFO, LOGGER,
+                    new Expr(Ops.TO_STRING,
+                             "# Queries: ", "*totalQueries",
+                             " in ", "*duration",
+                             "secs, query rate (records/sec): ",
+                             "*qrate")),
 
               Case.create(
                 new Expr(Ops.EQUAL,
@@ -602,17 +905,17 @@ public class LoadTest {
   }
 
   @Test
-  public void loadTestTest() throws Exception
+  public void rtreeLoadTestTest() throws Exception
   {
     LOGGER.error("loadTestTest");
     try (InProcessCluster cluster = InProcessCluster.create()) {
       LOGGER.error("Launching spatial index module");
-      final RamaModule spatialModule = new SpatialModule();
-      cluster.launchModule(spatialModule, new LaunchConfig(2, 2));
+      final RamaModule RTreeModule = new RTreeModule();
+      cluster.launchModule(RTreeModule, new LaunchConfig(2, 2));
 
 
       LOGGER.error("Launching perf test module");
-      Module.pauseFn =
+      LoadModule.pauseFn =
         (String moduleName, String topologyName, Boolean activeFlag) -> {
         if (activeFlag) {
           LOGGER.error("Enable topology, moduleName: "+moduleName
@@ -626,11 +929,58 @@ public class LoadTest {
         return activeFlag;
       };
 
-      final RamaModule module = new Module();
+      final RamaModule module = new LoadModule(RTreeModuleName);
       cluster.launchModule(module, new LaunchConfig(4, 1));
       LOGGER.error("Launched perf test module");
       final PState smState =
-        cluster.clusterPState(Module.class.getName(), "$$sm");
+        cluster.clusterPState(LoadModule.class.getName(), "$$sm");
+      Thread.sleep(30000);
+
+      LOGGER.error("Start waiting for test completion");
+      StateMachineState<LoadTestStateMachine.LoadTestState> state = null;
+      for (int i=0; i<1000; i=i+1) {
+         state = smState.selectOne(Path.stay());
+         if (state.currentState == LoadTestStateMachine.LoadTestState.DONE) {
+           break;
+         }
+         LOGGER.error("Waiting for state machine to complete");
+         Thread.sleep(10000);
+      }
+      assertEquals(LoadTestStateMachine.LoadTestState.DONE, state.currentState);
+    }
+    LOGGER.error("loadTestTest done");
+  }
+
+  @Test
+  public void gridLoadTestTest() throws Exception
+  {
+    LOGGER.error("loadTestTest");
+    try (InProcessCluster cluster = InProcessCluster.create()) {
+      LOGGER.error("Launching spatial index module");
+      final RamaModule GridModule = new GridModule();
+      cluster.launchModule(GridModule, new LaunchConfig(2, 2));
+
+
+      LOGGER.error("Launching perf test module");
+      LoadModule.pauseFn =
+        (String moduleName, String topologyName, Boolean activeFlag) -> {
+        if (activeFlag) {
+          LOGGER.error("Enable topology, moduleName: "+moduleName
+                       + ", topologyName: "+topologyName);
+          cluster.resumeMicrobatchTopology(moduleName, topologyName);
+        } else {
+          LOGGER.error("Disable topology, moduleName: "+moduleName
+                       + ", topologyName: "+topologyName);
+          cluster.pauseMicrobatchTopology(moduleName, topologyName);
+        }
+        return activeFlag;
+      };
+
+      final RamaModule module = new LoadModule(GridModuleName);
+      cluster.launchModule(module, new LaunchConfig(4, 1));
+      LOGGER.error("Launched perf test module");
+      final PState smState =
+        cluster.clusterPState(LoadModule.class.getName(), "$$sm");
       Thread.sleep(30000);
 
       LOGGER.error("Start waiting for test completion");

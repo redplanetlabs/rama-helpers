@@ -343,7 +343,7 @@ public class GridTest {
     Random random = new Random(seed);
 
     final MBR bounds = new MBR(new double[]{0,0}, new double[]{100,1000});
-    final int numObjects = 20;
+    final int numObjects = 2000;
     List<RandomObject> objects = generateObjects(random, bounds, numObjects);
 
     try (InProcessCluster cluster = InProcessCluster.create()) {
@@ -376,7 +376,7 @@ public class GridTest {
       cluster.waitForMicrobatchProcessedCount(module.getClass().getName(),
                                               "m",
                                               numObjects);
-      LOGGER.debug("Processed entries");
+      LOGGER.debug("Processed {} entries", numObjects);
 
       // LOGGER.error("Dump");
       // dump.invoke();
@@ -398,7 +398,7 @@ public class GridTest {
       ArrayList<Long> objectIds = new ArrayList<>();
 
       for (int i = 0; i < numObjects ; i++) {
-        LOGGER.error("XX "+ i + " " + objectLookup.selectOne(Path.key(Long.valueOf(i))));
+        LOGGER.trace("XX "+ i + " " + objectLookup.selectOne(Path.key(Long.valueOf(i))));
         objectIds.add(objectLookup.selectOne(Path.key(Long.valueOf(i))));
       }
 

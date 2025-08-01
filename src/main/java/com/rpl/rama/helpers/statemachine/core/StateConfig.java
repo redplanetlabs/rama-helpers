@@ -23,6 +23,7 @@ public class StateConfig<State extends Enum<State>,
     public TransitionType type() { return TransitionType.DURATION; }
 
     public Boolean isExpired(final Duration elapsed) {
+      System.out.println("Duration: " + duration + ", elapsed: " + elapsed);
       return elapsed.compareTo(duration) > 0;
     }
 

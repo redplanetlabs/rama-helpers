@@ -14,7 +14,7 @@ NUMTASKS=$((NUM * 4))
 # aws-deploy/bin/rama-cluster.sh deploy hugo-rtree-test
 # aws-deploy/bin/rama-cluster.sh destroy hugo-rtree-test
 
-RAMA=rama-hugo-rtree-test
+RAMA=rama-hugo-spatial-test
 
 
 wait_for_module_running() {
@@ -56,30 +56,30 @@ wait_for_module_running \
 
 ${RAMA} moduleStatus \
 	--useInternalHostnames \
-	"com.rpl.rama.helpers.spatial.loadtest.LoadTest\$SpatialModule" \
+	"com.rpl.rama.helpers.spatial.loadtest.LoadTest\$RTreeModule" \
     | jq -e '.moduleState != "NOT_ALIVE"' > /dev/null ||
 ${RAMA} deploy \
 	--action launch \
 	--jar target/rama-helpers-fat-jar-with-tests.jar \
-	--module "com.rpl.rama.helpers.spatial.loadtest.LoadTest\$SpatialModule" \
+	--module "com.rpl.rama.helpers.spatial.loadtest.LoadTest\$RTreeModule" \
 	--workers ${NUM} --tasks ${NUMTASKS} --threads ${NUMTASKS} \
 	--configOverrides load_test_config.yaml \
 	--useInternalHostnames
 
 wait_for_module_running \
-    "com.rpl.rama.helpers.spatial.loadtest.LoadTest\$SpatialModule"
+    "com.rpl.rama.helpers.spatial.loadtest.LoadTest\$RTreeModule"
 
 echo "Deploying test module..."
 
 ${RAMA} deploy \
 	--action launch \
 	--jar target/rama-helpers-fat-jar-with-tests.jar \
-	--module "com.rpl.rama.helpers.spatial.loadtest.LoadTest\$Module" \
+	--module "com.rpl.rama.helpers.spatial.loadtest.LoadTest\$LoadModule" \
 	--workers 1 --tasks ${NUM}  --threads ${NUM} \
 	--configOverrides load_test_config.yaml \
 	--useInternalHostnames
 
 wait_for_module_running \
-    "com.rpl.rama.helpers.spatial.loadtest.LoadTest\$Module"
+    "com.rpl.rama.helpers.spatial.loadtest.LoadTest\$LoadModule"
 
 say "Load test running"
