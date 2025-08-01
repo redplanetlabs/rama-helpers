@@ -553,7 +553,8 @@ public class RTree implements RamaSerializable {
               taskIdVar, "*newSiblingsList")
         .each(List<Node>::size, "*newSiblingsList").out("*numSiblings")
         // TODO remove this check completely?
-        .each(Ops.GREATER_THAN, "*numSiblings", 0 /*1*/).out("*needsOps")
+        // .each(Ops.GREATER_THAN, "*numSiblings", 0 /*1*/).out("*needsOps")
+        .each(Ops.NOT, new Expr(Node::isRoot, nodeVar)).out("*needsOps")
         .each(Ops.EXPLODE,"*newSiblingsList").out("*sibling")
         .each(Ops.LOG_DEBUG, LOGGER,
               "[{}] Explode sibling: {}",
