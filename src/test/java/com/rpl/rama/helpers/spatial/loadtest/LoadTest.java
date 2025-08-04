@@ -236,6 +236,7 @@ public class LoadTest {
     public long numQueried;
 
     public QueryData() {
+      LOGGER.debug("QueryData");
       neverQueried = true;
       queriesStart = Instant.now().toEpochMilli();
       queriesEnd = 0L;
@@ -243,7 +244,7 @@ public class LoadTest {
     }
 
     public QueryData reset() {
-      LOGGER.debug("reset");
+      LOGGER.debug("QueryData::reset");
       neverQueried = true;
       queriesStart = 0L;
       queriesEnd = 0L;
@@ -251,7 +252,20 @@ public class LoadTest {
       return this;
     }
 
-    QueryData someQueried(long n) {
+    // QueryData someQueried(long n) {
+    //   LOGGER.debug("someQueried: n=" + n + ", this=" + this);
+    //   if (neverQueried) {
+    //     queriesStart = Instant.now().toEpochMilli();
+    //     queriesEnd = Instant.now().toEpochMilli();
+    //     neverQueried = false;
+    //   } else {
+    //     queriesEnd = Instant.now().toEpochMilli();
+    //     numQueried = numQueried + n;
+    //   }
+    //   return this;
+    // }
+
+    QueryData someQueried(int n) {
       LOGGER.debug("someQueried: n=" + n + ", this=" + this);
       if (neverQueried) {
         queriesStart = Instant.now().toEpochMilli();
@@ -408,8 +422,9 @@ public class LoadTest {
       m.source("*queryStatsDepot").out("*microbatch")
           .each(Ops.LOG_DEBUG, LOGGER, "Microbatch queryStatsDepot")
           .explodeMicrobatch("*microbatch").out("*data")
+          .each(Ops.LOG_DEBUG, LOGGER, "Microbatch queryStatsDepot {}", "*data")
           .ifTrue(
-            new Expr(Ops.IS_INSTANCE_OF, Long.class, "*data"),
+            new Expr(Ops.IS_INSTANCE_OF, Integer.class, "*data"),
             Block
             .localTransform(
               "$$queryData",
@@ -894,7 +909,7 @@ public class LoadTest {
                     new Expr(Ops.TO_STRING,
                              "# Queries: ", "*totalQueries",
                              " in ", "*duration",
-                             "secs, query rate (records/sec): ",
+                             "secs, query rate (queries/sec): ",
                              "*qrate")),
 
               Case.create(
