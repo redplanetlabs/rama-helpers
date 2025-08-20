@@ -19,8 +19,8 @@ import java.util.SortedMap;
  * The pattern for this class is to create an instance and then use {@link declarePStates} to create all its needed PStates
  * on the topology that should own it. The other methods define high-level operations to perform on this data structure.
  *
- * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/pstates.html">PStates documentation</a>
- * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+ * @see <a href="https://redplanetlabs.com/docs/~/pstates.html">PStates documentation</a>
+ * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
  */
 public class KeyToUniqueFixedItemsPStateGroup {
   private final String _pstate;
@@ -109,7 +109,7 @@ public class KeyToUniqueFixedItemsPStateGroup {
   /**
    * Macro to add item to collection for specified key
    *
-   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block addItem(Object key, Object item) {
     String metaVar = Helpers.genVar("meta");
@@ -167,7 +167,7 @@ public class KeyToUniqueFixedItemsPStateGroup {
   /**
    * Macro to remove item from collection for specified key
    *
-   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block removeItem(Object key, Object item) {
     String entityIdVar = Helpers.genVar("entityId");
@@ -179,7 +179,7 @@ public class KeyToUniqueFixedItemsPStateGroup {
   /**
    * Macro to remove entity from inner fixed list by its entity ID
    *
-   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block removeItemByEntityId(Object key, Object entityId) {
     String existingIdVar = Helpers.genVar("existingId");
@@ -192,7 +192,7 @@ public class KeyToUniqueFixedItemsPStateGroup {
   /**
    * Macro to remove entity from inner fixed list by its ID
    *
-   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block removeItemById(Object key, Object id) {
     String existingItemVar = Helpers.genVar("existingItem");
@@ -205,7 +205,7 @@ public class KeyToUniqueFixedItemsPStateGroup {
   /**
    * Macro to remove key and its underlying collection
    *
-   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block removeKey(Object key) {
     return Block.localTransform(_meta, Path.key(key).termVoid())

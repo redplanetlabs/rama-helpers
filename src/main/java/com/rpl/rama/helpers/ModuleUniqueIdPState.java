@@ -8,8 +8,8 @@ import com.rpl.rama.ops.Ops;
  * Higher-level PState helper for generating 8 byte IDs unique across the module. ID consists of 22 bits
  * for the generating task ID and 42 bits for a monotonically increasing or decreasing number on the task.
  *
- * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/pstates.html">PStates documentation</a>
- * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+ * @see <a href="https://redplanetlabs.com/docs/~/pstates.html">PStates documentation</a>
+ * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
  */
 public class ModuleUniqueIdPState {
   private final String _pstateName;
@@ -51,7 +51,7 @@ public class ModuleUniqueIdPState {
    * Macro to generate a new unique ID on the given task
    *
    * @param outVar Var to bind the output
-   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block genId(String outVar) {
     int change = _descending ? -1 : 1;

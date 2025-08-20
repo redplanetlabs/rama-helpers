@@ -28,8 +28,8 @@ import com.rpl.rama.ops.*;
  * on the topology that should own it. This class provides further high-level operations that can be used with macros.
  * Queries are satisfied by querying the underlying PStates directly using paths.
  *
- * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/pstates.html">PStates documentation</a>
- * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+ * @see <a href="https://redplanetlabs.com/docs/~/pstates.html">PStates documentation</a>
+ * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
  */
 public class KeyToLinkedEntitySetPStateGroup {
   private final Class _keyType;
@@ -99,7 +99,7 @@ public class KeyToLinkedEntitySetPStateGroup {
   /**
    * Macro to add an entity to the linked set for a key
    *
-   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block addToLinkedSet(Object key, Object entity) {
     String entityIdVar = Helpers.genVar("entityId");
@@ -120,7 +120,7 @@ public class KeyToLinkedEntitySetPStateGroup {
   /**
    * Macro to only continue processing if the specified key exists in the top-level map
    *
-   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block filterKeyExists(Object key) {
     return Block.localSelect(_keyToEntityToId, Path.must(key));
@@ -129,7 +129,7 @@ public class KeyToLinkedEntitySetPStateGroup {
   /**
    * Macro to remove entity from inner linked set by its entity ID
    *
-   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block removeFromLinkedSetByEntityId(Object key, Object entityId) {
     String idVar = Helpers.genVar("id");
@@ -142,7 +142,7 @@ public class KeyToLinkedEntitySetPStateGroup {
   /**
    * Macro to remove entity from inner linked set
    *
-   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block removeFromLinkedSet(Object key, Object entity) {
     String entityIdVar = Helpers.genVar("entityId");
@@ -154,7 +154,7 @@ public class KeyToLinkedEntitySetPStateGroup {
    * Macro to remove key and its associated linked set entirely. Removes all state stored in both generated
    * PStates.
    *
-   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block removeKey(Object key) {
     return Block.localTransform(_keyToEntityToId, Path.key(key).termVoid())

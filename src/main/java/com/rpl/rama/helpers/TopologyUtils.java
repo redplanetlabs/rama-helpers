@@ -13,8 +13,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Helper utilities for use within topology code
  *
- * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/tutorial4.html">Dataflow documentation</a>
- * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+ * @see <a href="https://redplanetlabs.com/docs/~/tutorial4.html">Dataflow documentation</a>
+ * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
  */
 public class TopologyUtils {
 
@@ -67,7 +67,7 @@ public class TopologyUtils {
    * @param from Runtime value from which to extract fields
    * @param fieldVars Fields to extract and vars to bind them to. For example, *field1 will extract field1 from the object and
    * bind it to the var *field1.
-   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public static Block extractJavaFields(Object from, String... fieldVars) {
     Block.Impl ret = Block.create();
@@ -79,15 +79,15 @@ public class TopologyUtils {
     }
     return ret;
   }
-  
-  
+
+
   private static volatile Long _simTime = null;
-  
+
   /**
    * Causes {@link TopologyUtils#currentTimeMillis()} in this class to return a manually controlled value. Sim time starts at 0
-   * and can be advanced with {@link advanceSimTime}. 
+   * and can be advanced with {@link advanceSimTime}.
    * <br><br>
-   * This works by using global state, so tests using this facility must call {@link Closeable#close()} on the 
+   * This works by using global state, so tests using this facility must call {@link Closeable#close()} on the
    * returned object before exiting.
    */
   public static Closeable startSimTime() {
@@ -96,10 +96,10 @@ public class TopologyUtils {
       @Override
       public void close() throws IOException {
         _simTime = null;
-      }      
+      }
     };
   }
-  
+
   /**
    * Advances sim time by the specified number of millis.
    */
@@ -107,7 +107,7 @@ public class TopologyUtils {
     _simTime = _simTime + millis;
   }
 
-  
+
   /**
    * If sim time is active, returns the sim time. Otherwise, returns {@link System#currentTimeMillis()}.
    */

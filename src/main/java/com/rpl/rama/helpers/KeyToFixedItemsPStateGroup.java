@@ -17,8 +17,8 @@ import java.util.*;
  * The pattern for this class is to create an instance and then use {@link declarePStates} to create all its needed PStates
  * on the topology that should own it. The other methods define high-level operations to perform on this data structure.
  * <br><br>
- * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/pstates.html">PStates documentation</a>
- * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+ * @see <a href="https://redplanetlabs.com/docs/~/pstates.html">PStates documentation</a>
+ * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
  */
 public class KeyToFixedItemsPStateGroup {
   private final String _pstate;
@@ -82,7 +82,7 @@ public class KeyToFixedItemsPStateGroup {
   /**
    * Macro to add item to collection for specified key
    *
-   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block addItem(Object key, Object item) {
     String metaVar = Helpers.genVar("meta");
@@ -114,7 +114,7 @@ public class KeyToFixedItemsPStateGroup {
   /**
    * Macro to remove an item by its ID. No-op if the ID doesn't exist.
    *
-   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block removeItemById(Object key, Object id) {
     return Block.localTransform(_pstate, Path.key(key, id).termVoid());
@@ -124,7 +124,7 @@ public class KeyToFixedItemsPStateGroup {
    * Macro to clear current items for a key. The clear is done piecemeal so as not to dominate the task thread. Only items
    * that exist at the start are cleared. New items that come in during the clear will remain.
    *
-   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block clearItems(Object key) {
     return Block.loopWithVars(LoopVars.var("*i", -1L),
@@ -146,7 +146,7 @@ public class KeyToFixedItemsPStateGroup {
   /**
    * Macro to remove key and its underlying collection
    *
-   * @see <a href="https://beta.redplanetlabs.com/docs/docs/1.0.0/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
+   * @see <a href="https://redplanetlabs.com/docs/~/intermediate-dataflow.html#_macros">Detailed macro documentation</a>
    */
   public Block removeKey(Object key) {
     return Block.localTransform(_meta, Path.key(key).termVoid())
